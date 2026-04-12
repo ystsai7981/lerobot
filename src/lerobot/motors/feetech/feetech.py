@@ -73,21 +73,6 @@ class TorqueMode(Enum):
     DISABLED = 0
 
 
-def _split_into_byte_chunks(value: int, length: int) -> list[int]:
-    if length == 1:
-        data = [value]
-    elif length == 2:
-        data = [scs.SCS_LOBYTE(value), scs.SCS_HIBYTE(value)]
-    elif length == 4:
-        data = [
-            scs.SCS_LOBYTE(scs.SCS_LOWORD(value)),
-            scs.SCS_HIBYTE(scs.SCS_LOWORD(value)),
-            scs.SCS_LOBYTE(scs.SCS_HIWORD(value)),
-            scs.SCS_HIBYTE(scs.SCS_HIWORD(value)),
-        ]
-    return data
-
-
 def patch_setPacketTimeout(self, packet_length):  # noqa: N802
     """
     HACK: This patches the PortHandler behavior to set the correct packet timeouts.
@@ -332,7 +317,18 @@ class FeetechMotorsBus(SerialMotorsBus):
         return ids_values
 
     def _split_into_byte_chunks(self, value: int, length: int) -> list[int]:
-        return _split_into_byte_chunks(value, length)
+        if length == 1:
+            data = [value]
+        elif length == 2:
+            data = [scs.SCS_LOBYTE(value), scs.SCS_HIBYTE(value)]
+        elif length == 4:
+            data = [
+                scs.SCS_LOBYTE(scs.SCS_LOWORD(value)),
+                scs.SCS_HIBYTE(scs.SCS_LOWORD(value)),
+                scs.SCS_LOBYTE(scs.SCS_HIWORD(value)),
+                scs.SCS_HIBYTE(scs.SCS_HIWORD(value)),
+            ]
+        return data
 
     def _broadcast_ping(self) -> tuple[dict[int, int], int]:
         data_list: dict[int, int] = {}

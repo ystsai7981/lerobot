@@ -15,6 +15,9 @@
 # limitations under the License.
 """Evaluate a policy on an environment by running rollouts and computing metrics.
 
+Requires: pip install 'lerobot[evaluation]' plus the policy extra (e.g. lerobot[pi])
+          and the environment extra (e.g. lerobot[pusht]) if evaluating in simulation.
+
 Usage examples:
 
 You want to evaluate a model from the hub (eg: https://huggingface.co/lerobot/diffusion_pusht)

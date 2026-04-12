@@ -24,11 +24,11 @@ model and dataset sharing.
 The base install is intentionally lightweight. Feature-specific dependencies
 are gated behind optional extras::
 
-    pip install 'lerobot[dataset]'   # dataset loading & creation
-    pip install 'lerobot[training]'  # training loop + wandb
-    pip install 'lerobot[hardware]'  # real robot control
-    pip install 'lerobot[robot]'     # dataset + hardware + viz (recording)
-    pip install 'lerobot[all]'       # everything
+    pip install 'lerobot[dataset]'       # dataset loading & creation
+    pip install 'lerobot[training]'      # training loop + wandb
+    pip install 'lerobot[hardware]'      # real robot control
+    pip install 'lerobot[core_scripts]'  # dataset + hardware + viz (record, replay, calibrate, etc.)
+    pip install 'lerobot[all]'           # everything
 """
 
 from lerobot.__version__ import __version__

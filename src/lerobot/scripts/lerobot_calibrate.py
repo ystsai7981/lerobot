@@ -15,6 +15,8 @@
 """
 Helper to recalibrate your device (robot or teleoperator).
 
+Requires: pip install 'lerobot[hardware]'
+
 Example:
 
 ```shell

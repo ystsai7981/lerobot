@@ -118,7 +118,7 @@ build = [
 
 # ── User-facing composite extras (map to CLI scripts) ─────
 # lerobot-record, lerobot-replay, lerobot-calibrate, lerobot-teleoperate, etc.
-robot = ["lerobot[dataset]", "lerobot[hardware]", "lerobot[viz]"]
+core_scripts = ["lerobot[dataset]", "lerobot[hardware]", "lerobot[viz]"]
 # lerobot-eval -- base evaluation framework. You also need the policy's extra (e.g., lerobot[pi])
 # and the environment's extra (e.g., lerobot[pusht]) if evaluating in simulation.
 evaluation = ["lerobot[av-dep]"]

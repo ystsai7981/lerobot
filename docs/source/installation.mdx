@@ -133,16 +133,16 @@ Then, install the library in editable mode. This is useful if you plan to contri
 <hfoptions id="install_lerobot_src">
 <hfoption id="conda">
 ```bash
-pip install -e ".[robot]"    # For real robot workflows (recording, replaying)
-pip install -e ".[training]" # For training policies
-pip install -e ".[all]"      # Everything (all policies, envs, hardware, dev tools)
+pip install -e ".[core_scripts]"  # For robot workflows (recording, replaying, calibrate)
+pip install -e ".[training]"      # For training policies
+pip install -e ".[all]"           # Everything (all policies, envs, hardware, dev tools)
 ```
 </hfoption>
 <hfoption id="uv">
 ```bash
-uv pip install -e ".[robot]"    # For real robot workflows (recording, replaying)
-uv pip install -e ".[training]" # For training policies
-uv pip install -e ".[all]"      # Everything (all policies, envs, hardware, dev tools)
+uv pip install -e ".[core_scripts]"  # For robot workflows (recording, replaying, calibrate)
+uv pip install -e ".[training]"      # For training policies
+uv pip install -e ".[all]"           # Everything (all policies, envs, hardware, dev tools)
 ```
 </hfoption>
 </hfoptions>
@@ -183,17 +183,17 @@ LeRobot provides **feature-scoped extras** that map to common workflows. If you 
 
 **Composite Extras** combine feature extras for common CLI scripts:
 
-| Extra         | Includes                       | Typical use case                                        |
-| ------------- | ------------------------------ | ------------------------------------------------------- |
-| `robot`       | `dataset` + `hardware` + `viz` | `lerobot-record`, `lerobot-replay`, `lerobot-calibrate` |
-| `evaluation`  | `av`                           | `lerobot-eval` (add policy + env extras as needed)      |
-| `dataset_viz` | `dataset` + `viz`              | `lerobot-dataset-viz`, `lerobot-imgtransform-viz`       |
+| Extra          | Includes                       | Typical use case                                        |
+| -------------- | ------------------------------ | ------------------------------------------------------- |
+| `core_scripts` | `dataset` + `hardware` + `viz` | `lerobot-record`, `lerobot-replay`, `lerobot-calibrate` |
+| `evaluation`   | `av`                           | `lerobot-eval` (add policy + env extras as needed)      |
+| `dataset_viz`  | `dataset` + `viz`              | `lerobot-dataset-viz`, `lerobot-imgtransform-viz`       |
 
 ```bash
-pip install 'lerobot[robot]'          # Record, replay, calibrate
-pip install 'lerobot[training]'       # Train policies
-pip install 'lerobot[robot,training]' # Record + train
-pip install 'lerobot[all]'            # Everything
+pip install 'lerobot[core_scripts]'          # Record, replay, calibrate
+pip install 'lerobot[training]'              # Train policies
+pip install 'lerobot[core_scripts,training]' # Record + train
+pip install 'lerobot[all]'                   # Everything
 ```
 
 **Policy, environment, and hardware extras** are still available for specific dependencies:
@@ -206,7 +206,7 @@ pip install 'lerobot[aloha,pusht]'    # Simulation environments
 pip install 'lerobot[feetech]'        # Feetech motor support
 ```
 
-_Multiple extras can be combined (e.g., `.[robot,pi,pusht]`). For a full list of available extras, refer to `pyproject.toml`._
+_Multiple extras can be combined (e.g., `.[core_scripts,pi,pusht]`). For a full list of available extras, refer to `pyproject.toml`._
 
 ### Troubleshooting
 

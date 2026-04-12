@@ -15,6 +15,8 @@
 """
 Simple script to control a robot from teleoperation.
 
+Requires: pip install 'lerobot[hardware]'
+
 Example:
 
 ```shell

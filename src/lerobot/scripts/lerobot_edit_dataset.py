@@ -17,6 +17,8 @@
 """
 Edit LeRobot datasets using various transformation tools.
 
+Requires: pip install 'lerobot[dataset]'
+
 This script allows you to delete episodes, split datasets, merge datasets,
 remove features, modify tasks, recompute stats, and convert image datasets to video format.
 When new_repo_id is specified, creates a new dataset.

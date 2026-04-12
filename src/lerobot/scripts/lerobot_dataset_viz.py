@@ -15,6 +15,8 @@
 # limitations under the License.
 """ Visualize data of **all** frames of any episode of a dataset of type LeRobotDataset.
 
+Requires: pip install 'lerobot[dataset_viz]'  (includes dataset + viz extras)
+
 Note: The last frame of the episode doesn't always correspond to a final state.
 That's because our datasets are composed of transition from state to state up to
 the antepenultimate state associated to the ultimate action to arrive in the final state.

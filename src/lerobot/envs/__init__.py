@@ -13,11 +13,10 @@
 # limitations under the License.
 
 # NOTE: gymnasium is currently a core dependency but is a candidate for moving to an
-# optional extra in the future. This guard is here to ensure a clear error message
-# if/when that transition happens.
-from lerobot.utils.import_utils import require_package
-
-require_package("gymnasium", extra="evaluation", import_name="gymnasium")
+# optional extra in the future. When that transition happens, uncomment the guard below
+# and update the extra name to the one that will contain gymnasium.
+# from lerobot.utils.import_utils import require_package
+# require_package("gymnasium", extra="<update_extra>", import_name="gymnasium")
 
 from .configs import AlohaEnv, EnvConfig, HILSerlRobotEnvConfig, HubEnvConfig, PushtEnv
 from .factory import make_env, make_env_config, make_env_pre_post_processors

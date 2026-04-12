@@ -15,6 +15,8 @@
 """
 Replays the actions of an episode from a dataset on a robot.
 
+Requires: pip install 'lerobot[core_scripts]'  (includes dataset + hardware + viz extras)
+
 Examples:
 
 ```shell
