@@ -29,15 +29,14 @@ Usage:
 
 import numpy as np
 
-from lerobot.datasets.dataset_tools import (
-    add_features,
+from lerobot.datasets import (
+    LeRobotDataset,
     delete_episodes,
     merge_datasets,
-    modify_features,
     remove_feature,
     split_dataset,
 )
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.dataset_tools import add_features, modify_features
 
 
 def main():

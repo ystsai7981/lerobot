@@ -26,7 +26,7 @@ import torch
 from torchvision.transforms import v2
 from torchvision.transforms.functional import to_pil_image
 
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets import LeRobotDataset
 from lerobot.transforms import ImageTransformConfig, ImageTransforms, ImageTransformsConfig
 
 

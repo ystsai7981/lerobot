@@ -15,9 +15,9 @@
 # limitations under the License.
 
 from lerobot.common.control_utils import init_keyboard_listener
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from lerobot.policies.act.modeling_act import ACTPolicy
-from lerobot.policies.factory import make_pre_post_processors
+from lerobot.datasets import LeRobotDataset
+from lerobot.policies import make_pre_post_processors
+from lerobot.policies.act import ACTPolicy
 from lerobot.processor import make_default_processors
 from lerobot.robots.lekiwi import LeKiwiClient, LeKiwiClientConfig
 from lerobot.scripts.lerobot_record import record_loop

@@ -31,8 +31,7 @@ from pprint import pprint
 import torch
 from huggingface_hub import HfApi
 
-from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets import LeRobotDataset, LeRobotDatasetMetadata
 
 
 def main():
