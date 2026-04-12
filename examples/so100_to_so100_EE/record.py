@@ -19,8 +19,8 @@ from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.common.control_utils import init_keyboard_listener
 from lerobot.datasets import LeRobotDataset, aggregate_pipeline_dataset_features, create_initial_features
 from lerobot.model.kinematics import RobotKinematics
-from lerobot.processor import RobotProcessorPipeline
-from lerobot.processor.converters import (
+from lerobot.processor import (
+    RobotProcessorPipeline,
     observation_to_transition,
     robot_action_observation_to_transition,
     transition_to_observation,

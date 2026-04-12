@@ -46,12 +46,12 @@ from tqdm import tqdm
 
 from lerobot.datasets import (
     CODEBASE_VERSION,
+    DEFAULT_QUANTILES,
     LeRobotDataset,
     aggregate_stats,
     get_feature_stats,
     write_stats,
 )
-from lerobot.datasets.compute_stats import DEFAULT_QUANTILES
 from lerobot.utils.utils import init_logging
 
 

@@ -110,8 +110,7 @@ except ImportError:
     plt = None
 
 from lerobot.configs import DatasetConfig, PreTrainedConfig, RTCAttentionSchedule, parser
-from lerobot.datasets import LeRobotDataset, LeRobotDatasetMetadata
-from lerobot.datasets.factory import resolve_delta_timestamps
+from lerobot.datasets import LeRobotDataset, LeRobotDatasetMetadata, resolve_delta_timestamps
 from lerobot.policies import get_policy_class, make_pre_post_processors
 from lerobot.policies.rtc import RTCConfig
 from lerobot.policies.rtc.debug_visualizer import RTCDebugVisualizer

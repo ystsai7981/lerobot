@@ -746,8 +746,7 @@ def save_annotations_to_dataset(
     dataset_path: Path, annotations: dict[int, SubtaskAnnotation], fps: int, prefix: str = "sparse"
 ):
     """Save annotations to LeRobot dataset parquet format."""
-    from lerobot.datasets import load_episodes
-    from lerobot.datasets.utils import DEFAULT_EPISODES_PATH
+    from lerobot.datasets import DEFAULT_EPISODES_PATH, load_episodes
 
     episodes_dataset = load_episodes(dataset_path)
     if not episodes_dataset or len(episodes_dataset) == 0:

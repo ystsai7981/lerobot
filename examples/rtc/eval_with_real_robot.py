@@ -103,7 +103,7 @@ from torch import Tensor
 
 from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense import RealSenseCameraConfig  # noqa: F401
-from lerobot.cameras.zmq.configuration_zmq import ZMQCameraConfig  # noqa: F401
+from lerobot.cameras.zmq import ZMQCameraConfig  # noqa: F401
 from lerobot.configs import PreTrainedConfig, RTCAttentionSchedule, parser
 from lerobot.policies import get_policy_class, make_pre_post_processors
 from lerobot.policies.rtc import ActionInterpolator, ActionQueue, LatencyTracker, RTCConfig
@@ -112,11 +112,9 @@ from lerobot.processor import (
     RelativeActionsProcessorStep,
     TransitionKey,
     create_transition,
-    to_relative_actions,
-)
-from lerobot.processor.factory import (
     make_default_robot_action_processor,
     make_default_robot_observation_processor,
+    to_relative_actions,
 )
 from lerobot.rl.process import ProcessSignalHandler
 from lerobot.robots import (  # noqa: F401

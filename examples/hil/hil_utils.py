@@ -25,8 +25,6 @@ from lerobot.processor import (
     RobotAction,
     RobotObservation,
     RobotProcessorPipeline,
-)
-from lerobot.processor.converters import (
     observation_to_transition,
     robot_action_observation_to_transition,
     transition_to_observation,

@@ -29,9 +29,14 @@ from .converters import (
     create_transition,
     from_tensor_to_numpy,
     identity_transition,
+    observation_to_transition,
     policy_action_to_transition,
+    robot_action_observation_to_transition,
+    robot_action_to_transition,
     transition_to_batch,
+    transition_to_observation,
     transition_to_policy_action,
+    transition_to_robot_action,
 )
 from .delta_action_processor import MapDeltaActionToRobotActionStep, MapTensorToDeltaActionDictStep
 from .device_processor import DeviceProcessorStep
@@ -99,8 +104,13 @@ __all__ = [
     "create_transition",
     "from_tensor_to_numpy",
     "identity_transition",
+    "observation_to_transition",
     "policy_action_to_transition",
+    "robot_action_observation_to_transition",
+    "robot_action_to_transition",
+    "transition_to_observation",
     "transition_to_policy_action",
+    "transition_to_robot_action",
     "DeviceProcessorStep",
     "DoneProcessorStep",
     "EnvAction",

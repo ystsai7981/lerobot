@@ -26,8 +26,7 @@ from huggingface_hub import HfApi
 from huggingface_hub.constants import REPOCARD_NAME
 from port_droid import DROID_SHARDS
 
-from lerobot.datasets import CODEBASE_VERSION, LeRobotDatasetMetadata
-from lerobot.datasets.utils import create_lerobot_dataset_card
+from lerobot.datasets import CODEBASE_VERSION, LeRobotDatasetMetadata, create_lerobot_dataset_card
 from lerobot.utils.utils import init_logging
 
 

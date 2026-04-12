@@ -31,12 +31,13 @@ import numpy as np
 
 from lerobot.datasets import (
     LeRobotDataset,
+    add_features,
     delete_episodes,
     merge_datasets,
+    modify_features,
     remove_feature,
     split_dataset,
 )
-from lerobot.datasets.dataset_tools import add_features, modify_features
 
 
 def main():
