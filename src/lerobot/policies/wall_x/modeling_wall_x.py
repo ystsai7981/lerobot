@@ -52,8 +52,9 @@ from torch.nn import CrossEntropyLoss
 from lerobot.utils.constants import ACTION, OBS_STATE
 from lerobot.utils.import_utils import (
     _peft_available,
+    _qwen_vl_utils_available,
+    _torchdiffeq_available,
     _transformers_available,
-    is_package_available,
     require_package,
 )
 
@@ -71,8 +72,6 @@ from .constant import (
     TOKENIZER_MAX_LENGTH,
 )
 
-_torchdiffeq_available = is_package_available("torchdiffeq")
-_qwen_vl_utils_available = is_package_available("qwen-vl-utils", import_name="qwen_vl_utils")
 _wallx_deps_available = (
     _transformers_available and _peft_available and _torchdiffeq_available and _qwen_vl_utils_available
 )

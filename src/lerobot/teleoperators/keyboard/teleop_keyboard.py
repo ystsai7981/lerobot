@@ -23,7 +23,7 @@ from typing import Any
 
 from lerobot.types import RobotAction
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
-from lerobot.utils.import_utils import is_package_available
+from lerobot.utils.import_utils import _pynput_available
 
 from ..teleoperator import Teleoperator
 from ..utils import TeleopEvents
@@ -33,7 +33,7 @@ from .configuration_keyboard import (
     KeyboardTeleopConfig,
 )
 
-PYNPUT_AVAILABLE = is_package_available("pynput")
+PYNPUT_AVAILABLE = _pynput_available
 keyboard = None
 if PYNPUT_AVAILABLE:
     try:

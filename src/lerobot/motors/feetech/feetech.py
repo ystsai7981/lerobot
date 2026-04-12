@@ -18,7 +18,7 @@ from enum import Enum
 from pprint import pformat
 from typing import TYPE_CHECKING
 
-from lerobot.utils.import_utils import is_package_available, require_package
+from lerobot.utils.import_utils import _feetech_sdk_available, require_package
 
 from ..encoding_utils import decode_sign_magnitude, encode_sign_magnitude
 from ..motors_bus import Motor, MotorCalibration, NameOrID, SerialMotorsBus, Value, get_address
@@ -34,8 +34,6 @@ from .tables import (
     MODEL_RESOLUTION,
     SCAN_BAUDRATES,
 )
-
-_feetech_sdk_available = is_package_available("feetech-servo-sdk", import_name="scservo_sdk")
 
 if TYPE_CHECKING or _feetech_sdk_available:
     import scservo_sdk as scs

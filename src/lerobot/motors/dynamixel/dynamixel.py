@@ -23,7 +23,7 @@ from copy import deepcopy
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from lerobot.utils.import_utils import is_package_available, require_package
+from lerobot.utils.import_utils import _dynamixel_sdk_available, require_package
 
 from ..encoding_utils import decode_twos_complement, encode_twos_complement
 from ..motors_bus import Motor, MotorCalibration, NameOrID, SerialMotorsBus, Value, get_address
@@ -35,8 +35,6 @@ from .tables import (
     MODEL_NUMBER_TABLE,
     MODEL_RESOLUTION,
 )
-
-_dynamixel_sdk_available = is_package_available("dynamixel-sdk", import_name="dynamixel_sdk")
 
 if TYPE_CHECKING or _dynamixel_sdk_available:
     import dynamixel_sdk as dxl

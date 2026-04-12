@@ -20,9 +20,7 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
-from lerobot.utils.import_utils import is_package_available, require_package
-
-_diffusers_available = is_package_available("diffusers")
+from lerobot.utils.import_utils import _diffusers_available, require_package
 
 if TYPE_CHECKING or _diffusers_available:
     from diffusers import ConfigMixin, ModelMixin

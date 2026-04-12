@@ -95,13 +95,29 @@ def require_package(pkg_name: str, extra: str, import_name: str | None = None) -
         )
 
 
+# ── Centralised availability flags ────────────────────────────────────────
+# Every optional-dependency check lives here so that the rest of the codebase
+# can simply ``from lerobot.utils.import_utils import _foo_available``.
+# Do NOT define ad-hoc ``is_package_available(...)`` calls in other modules.
+
+# ML / training
 _transformers_available = is_package_available("transformers")
 _peft_available = is_package_available("peft")
 _scipy_available = is_package_available("scipy")
+_diffusers_available = is_package_available("diffusers")
+_torchdiffeq_available = is_package_available("torchdiffeq")
+
+# Hardware SDKs
+_dynamixel_sdk_available = is_package_available("dynamixel-sdk", import_name="dynamixel_sdk")
+_feetech_sdk_available = is_package_available("feetech-servo-sdk", import_name="scservo_sdk")
 _reachy2_sdk_available = is_package_available("reachy2_sdk")
 _can_available = is_package_available("python-can", "can")
 _unitree_sdk_available = is_package_available("unitree-sdk2py", "unitree_sdk2py")
+
+# Misc
+_pynput_available = is_package_available("pynput")
 _pygame_available = is_package_available("pygame")
+_qwen_vl_utils_available = is_package_available("qwen-vl-utils", import_name="qwen_vl_utils")
 
 
 def make_device_from_device_class(config: ChoiceRegistry) -> Any:
