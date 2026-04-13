@@ -90,7 +90,7 @@ snapshot_download(repo_id='lerobot/libero-assets', repo_type='dataset', \
 
 # Workaround: Triton ships ptxas without the execute bit set.
 # Without this chmod, any JIT compilation (e.g. torch.compile) fails
-# with "Permission denied". See: https://github.com/triton-lang/triton/issues/2due
+# with "Permission denied".
 RUN chmod +x /lerobot/.venv/lib/python${PYTHON_VERSION}/site-packages/triton/backends/nvidia/bin/ptxas
 
 # ── Source layer (rebuilds in seconds on code-only changes) ─────────────────

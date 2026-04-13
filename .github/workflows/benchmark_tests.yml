@@ -102,6 +102,7 @@ jobs:
           tags: lerobot-benchmark-libero:ci
 
       - name: Run Libero smoke eval (1 episode)
+        if: env.HF_USER_TOKEN != ''
         run: |
           # Named container (no --rm) so we can docker cp artifacts out.
           # Output to /tmp inside the container — /artifacts doesn't exist
@@ -148,7 +149,7 @@ jobs:
 
       - name: Upload Libero rollout video
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
         with:
           name: libero-rollout-video
           path: /tmp/libero-artifacts/videos/
@@ -156,7 +157,7 @@ jobs:
 
       - name: Upload Libero eval metrics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
         with:
           name: libero-metrics
           path: /tmp/libero-artifacts/metrics.json
@@ -210,7 +211,7 @@ jobs:
 
       - name: Upload Libero train-smoke eval video
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
         with:
           name: libero-train-smoke-video
           path: /tmp/libero-train-smoke-artifacts/eval/
@@ -295,7 +296,7 @@ jobs:
 
       - name: Upload MetaWorld rollout video
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
         with:
           name: metaworld-rollout-video
           path: /tmp/metaworld-artifacts/videos/
@@ -303,7 +304,7 @@ jobs:
 
       - name: Upload MetaWorld eval metrics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
         with:
           name: metaworld-metrics
           path: /tmp/metaworld-artifacts/metrics.json

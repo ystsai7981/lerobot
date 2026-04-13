@@ -42,6 +42,20 @@ import sys
 from pathlib import Path
 
 
+def _safe_float(v: float | int | None) -> float | None:
+    if v is None:
+        return None
+    f = float(v)
+    return None if math.isnan(f) else f
+
+
+def _safe_int(v: float | int | None) -> int | None:
+    if v is None:
+        return None
+    f = float(v)
+    return None if math.isnan(f) else int(f)
+
+
 def _extract_metrics(info: dict) -> tuple[float | None, int | None, float | None, float | None]:
     """Extract (pc_success, n_episodes, avg_sum_reward, eval_s) from eval_info.json.
 
@@ -58,16 +72,10 @@ def _extract_metrics(info: dict) -> tuple[float | None, int | None, float | None
         reward = agg.get("avg_sum_reward")
         eval_s = agg.get("eval_s")
 
-        def _safe_float(v: float | int | None) -> float | None:
-            if v is None:
-                return None
-            f = float(v)
-            return None if math.isnan(f) else f
-
         if pc is not None and not math.isnan(pc):
             return (
                 float(pc),
-                int(n) if n is not None else None,
+                _safe_int(n),
                 _safe_float(reward),
                 _safe_float(eval_s),
             )
