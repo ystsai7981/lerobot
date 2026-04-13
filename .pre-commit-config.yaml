@@ -14,7 +14,6 @@
 
 default_language_version:
     python: python3.12
-    node: "18.17.1"
 
 exclude: "tests/artifacts/.*\\.safetensors$"
 
