@@ -777,6 +777,16 @@ class SerialMotorsBus(MotorsBusBase):
 
         self.reset_calibration(motor_names)
         actual_positions = self.sync_read("Present_Position", motor_names, normalize=False)
+
+        if any(pos < 0 or pos > 4095 for pos in actual_positions.values()):
+            invalid_positions = {m: p for m, p in actual_positions.items() if p < 0 or p > 4095}
+
+            raise RuntimeError(
+                f"Some motors have invalid position readings {invalid_positions}, which can lead to incorrect homing offsets.\n"
+                "Try to disconnect the robot's AC power and USB cable, move it to the middle of its range of motion, then reconnect.\n"
+                "If the problem persists, check the documentation: https://huggingface.co/docs/lerobot/feetech"
+            )
+
         homing_offsets = self._get_half_turn_homings(actual_positions)
         for motor, offset in homing_offsets.items():
             self.write("Homing_Offset", motor, offset)
