@@ -87,6 +87,8 @@ class SACAlgorithm(RLAlgorithm):
         self.critic_target = CriticEnsemble(encoder=self.encoder_critic, ensemble=target_heads)
         self.critic_target.load_state_dict(self.critic_ensemble.state_dict())
 
+        # TODO(Khalil): Investigate and fix torch.compile
+        # NOTE: torch.compile is disabled, policy does not converge when enabled.
         if self.config.use_torch_compile:
             self.critic_ensemble = torch.compile(self.critic_ensemble)
             self.critic_target = torch.compile(self.critic_target)

@@ -48,7 +48,7 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
     shared_encoder: bool = True
     critic_network_kwargs: CriticNetworkConfig = field(default_factory=CriticNetworkConfig)
     discrete_critic_network_kwargs: CriticNetworkConfig = field(default_factory=CriticNetworkConfig)
-    use_torch_compile: bool = True
+    use_torch_compile: bool = False
 
     @classmethod
     def from_policy_config(cls, policy_cfg) -> SACAlgorithmConfig:
