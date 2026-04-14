@@ -151,7 +151,11 @@ def _init_dagger_keyboard():
     def on_press(key):
         try:
             if events["in_reset"]:
-                if key in [keyboard.Key.space, keyboard.Key.right] or hasattr(key, "char") and key.char == "c":
+                if (
+                    key in [keyboard.Key.space, keyboard.Key.right]
+                    or hasattr(key, "char")
+                    and key.char == "c"
+                ):
                     events["start_next_episode"] = True
                 elif key == keyboard.Key.esc:
                     events["stop_recording"] = True
