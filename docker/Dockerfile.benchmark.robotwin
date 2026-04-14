@@ -83,8 +83,8 @@ COPY --chown=user_lerobot:user_lerobot setup.py pyproject.toml uv.lock README.md
 COPY --chown=user_lerobot:user_lerobot src/ src/
 
 # Install lerobot base only (no benchmark extras — RoboTwin is source-only).
-# Install lerobot with smolvla extra (for transformers dep needed by SmolVLA policy)
-RUN uv pip install --no-cache -e ".[smolvla]"
+# smolvla → transformers for SmolVLA policy; av-dep → PyAV for MP4 rollout videos.
+RUN uv pip install --no-cache -e ".[smolvla,av-dep]"
 
 # ── 2. Install RoboTwin 2.0 simulator stack ────────────────────────────────
 # Clone at a pinned commit for reproducibility.
