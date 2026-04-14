@@ -107,6 +107,7 @@ class Classifier(PreTrainedPolicy):
     def __init__(
         self,
         config: RewardClassifierConfig,
+        **kwargs,
     ):
         from transformers import AutoModel
 
