@@ -16,7 +16,6 @@
 
 import builtins
 import logging
-import math
 from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict, Unpack
