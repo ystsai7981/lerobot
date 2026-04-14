@@ -361,13 +361,17 @@ jobs:
               cd /opt/robotwin && lerobot-eval \
                 --policy.path=pepijn223/smolvla_robotwin \
                 --env.type=robotwin \
-                --env.task=beat_block_hammer \
+                --env.task=beat_block_hammer,click_bell,handover_block,open_laptop,stack_blocks_two \
                 --eval.batch_size=1 \
                 --eval.n_episodes=1 \
                 --eval.use_async_envs=false \
                 --policy.device=cuda \
                 '--rename_map={\"observation.images.head_camera\": \"observation.images.camera1\", \"observation.images.left_camera\": \"observation.images.camera2\", \"observation.images.right_camera\": \"observation.images.camera3\"}' \
                 --output_dir=/tmp/eval-artifacts
+              python /lerobot/scripts/ci/extract_task_descriptions.py \
+                --env robotwin \
+                --task beat_block_hammer,click_bell,handover_block,open_laptop,stack_blocks_two \
+                --output /tmp/eval-artifacts/task_descriptions.json
             "
 
       - name: Copy RoboTwin artifacts from container
@@ -383,7 +387,7 @@ jobs:
           python3 scripts/ci/parse_eval_metrics.py \
             --artifacts-dir /tmp/robotwin-artifacts \
             --env robotwin \
-            --task beat_block_hammer \
+            --task beat_block_hammer,click_bell,handover_block,open_laptop,stack_blocks_two \
             --policy pepijn223/smolvla_robotwin
 
       - name: Upload RoboTwin rollout video
