@@ -23,6 +23,7 @@ from typing import Any
 
 import gymnasium as gym
 import numpy as np
+import torch
 from gymnasium import spaces
 
 from lerobot.types import RobotObservation
@@ -320,7 +321,11 @@ class RoboTwinEnv(gym.Env):
         actual_seed = self.episode_index if seed is None else seed
         setup_kwargs = _load_robotwin_setup_kwargs(self.task_name)
         setup_kwargs.update(seed=actual_seed, is_test=True)
-        self._env.setup_demo(**setup_kwargs)
+        # setup_demo → load_robot → CuroboPlanner.warmup() runs Newton's-method
+        # trajectory optimization, which requires autograd. lerobot_eval wraps
+        # the whole rollout in torch.no_grad(), so re-enable grad here.
+        with torch.enable_grad():
+            self._env.setup_demo(**setup_kwargs)
         self.episode_index += self._reset_stride
         self._step_count = 0
 
@@ -333,10 +338,13 @@ class RoboTwinEnv(gym.Env):
             raise ValueError(f"Expected 1-D action of shape ({ACTION_DIM},), got {action.shape}")
 
         # RoboTwin 2.0 uses take_action(); fall back to step() for older forks.
-        if hasattr(self._env, "take_action"):
-            self._env.take_action(action)
-        else:
-            self._env.step(action)
+        # take_action() invokes the CuRobo planner, which needs autograd —
+        # lerobot_eval wraps the rollout in torch.no_grad().
+        with torch.enable_grad():
+            if hasattr(self._env, "take_action"):
+                self._env.take_action(action)
+            else:
+                self._env.step(action)
 
         self._step_count += 1
 
