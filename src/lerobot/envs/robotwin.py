@@ -247,6 +247,7 @@ class RoboTwinEnv(gym.Env):
         self.observation_height = observation_height or setup_kwargs["head_camera_h"]
         self.observation_width = observation_width or setup_kwargs["head_camera_w"]
         self.episode_length = episode_length
+        self._max_episode_steps = episode_length  # lerobot_eval.rollout reads this
         self.render_mode = render_mode
 
         self._env: Any | None = None  # deferred — created on first reset() inside worker
