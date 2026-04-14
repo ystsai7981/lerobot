@@ -19,7 +19,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import time
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 
 from lerobot.datasets import VideoEncodingManager
 from lerobot.utils.constants import ACTION, OBS_STR
@@ -46,6 +46,10 @@ class SentryStrategy(RolloutStrategy):
     All actions flow through ``robot_observation_processor`` (observations)
     and ``robot_action_processor`` (actions) before reaching the robot,
     supporting EE-space recording with joint-space robots.
+
+    **Thread safety:** A lock (``_episode_lock``) serialises
+    ``save_episode`` and ``push_to_hub`` calls so the background push
+    thread never reads an episode that is still being finalised.
     """
 
     config: SentryStrategyConfig
@@ -54,6 +58,7 @@ class SentryStrategy(RolloutStrategy):
         super().__init__(config)
         self._push_thread: Thread | None = None
         self._needs_push = Event()
+        self._episode_lock = Lock()
 
     def setup(self, ctx: RolloutContext) -> None:
         self._init_engine(ctx)
@@ -113,7 +118,8 @@ class SentryStrategy(RolloutStrategy):
                     # Auto-rotate episodes
                     elapsed = time.perf_counter() - episode_start
                     if elapsed >= self.config.episode_duration_s:
-                        dataset.save_episode()
+                        with self._episode_lock:
+                            dataset.save_episode()
                         episodes_since_push += 1
                         self._needs_push.set()
                         logger.info("Episode saved (total: %d)", dataset.num_episodes)
@@ -134,7 +140,8 @@ class SentryStrategy(RolloutStrategy):
 
             finally:
                 with contextlib.suppress(Exception):
-                    dataset.save_episode()
+                    with self._episode_lock:
+                        dataset.save_episode()
                     self._needs_push.set()
 
     def teardown(self, ctx: RolloutContext) -> None:
@@ -155,17 +162,22 @@ class SentryStrategy(RolloutStrategy):
         logger.info("Sentry strategy teardown complete")
 
     def _background_push(self, dataset, cfg) -> None:
-        """Push dataset to hub in a background thread (non-blocking)."""
+        """Push dataset to hub in a background thread (non-blocking).
+
+        Acquires ``_episode_lock`` during the push to prevent
+        ``save_episode`` from finalising a new episode mid-upload.
+        """
         if self._push_thread is not None and self._push_thread.is_alive():
             logger.info("Previous push still in progress, skipping")
             return
 
         def _push():
             try:
-                dataset.push_to_hub(
-                    tags=cfg.dataset.tags if cfg.dataset else None,
-                    private=cfg.dataset.private if cfg.dataset else False,
-                )
+                with self._episode_lock:
+                    dataset.push_to_hub(
+                        tags=cfg.dataset.tags if cfg.dataset else None,
+                        private=cfg.dataset.private if cfg.dataset else False,
+                    )
                 self._needs_push.clear()
                 logger.info("Background push to hub complete")
             except Exception as e:

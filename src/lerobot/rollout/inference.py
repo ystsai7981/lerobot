@@ -147,6 +147,7 @@ class InferenceEngine:
         use_torch_compile: bool = False,
         compile_warmup_inferences: int = 2,
         rtc_queue_threshold: int = 30,
+        shutdown_event: Event | None = None,
     ) -> None:
         self._policy = policy
         self._preprocessor = preprocessor
@@ -170,6 +171,8 @@ class InferenceEngine:
         self._policy_active = Event()
         self._compile_warmup_done = Event()
         self._shutdown_event = Event()
+        self._rtc_error = Event()
+        self._global_shutdown_event = shutdown_event
         self._rtc_thread: Thread | None = None
 
         if not self._use_torch_compile:
@@ -211,6 +214,11 @@ class InferenceEngine:
     def compile_warmup_done(self) -> Event:
         return self._compile_warmup_done
 
+    @property
+    def rtc_failed(self) -> bool:
+        """True if the RTC background thread exited due to an unrecoverable error."""
+        return self._rtc_error.is_set()
+
     def start(self) -> None:
         """Start the inference engine.  Launches the RTC background thread if enabled."""
         if self._use_rtc:
@@ -249,8 +257,8 @@ class InferenceEngine:
         self._policy.reset()
         self._preprocessor.reset()
         self._postprocessor.reset()
-        if self._use_rtc:
-            self._action_queue = ActionQueue(self._rtc_config)
+        if self._use_rtc and self._action_queue is not None:
+            self._action_queue.clear()
 
     # ------------------------------------------------------------------
     # Sync inference
@@ -401,3 +409,9 @@ class InferenceEngine:
         except Exception as e:
             logger.error("Fatal error in RTC thread: %s", e)
             logger.error(traceback.format_exc())
+            self._rtc_error.set()
+            # Unblock any warmup waiters so the main loop doesn't spin forever
+            self._compile_warmup_done.set()
+            # Signal the top-level shutdown so strategies exit their control loops
+            if self._global_shutdown_event is not None:
+                self._global_shutdown_event.set()

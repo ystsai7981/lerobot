@@ -203,10 +203,13 @@ class RolloutConfig:
             )
 
         # Sentry MUST use streaming encoding to avoid disk I/O blocking the control loop
-        if isinstance(self.strategy, SentryStrategyConfig) and self.dataset is not None:
-            if not self.dataset.streaming_encoding:
-                logger.warning("Sentry mode forces streaming_encoding=True")
-                self.dataset.streaming_encoding = True
+        if (
+            isinstance(self.strategy, SentryStrategyConfig)
+            and self.dataset is not None
+            and not self.dataset.streaming_encoding
+        ):
+            logger.warning("Sentry mode forces streaming_encoding=True")
+            self.dataset.streaming_encoding = True
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:
