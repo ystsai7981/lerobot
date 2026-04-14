@@ -228,8 +228,8 @@ class RoboTwinEnv(gym.Env):
         episode_index: int = 0,
         n_envs: int = 1,
         camera_names: Sequence[str] = ROBOTWIN_CAMERA_NAMES,
-        observation_height: int = 480,
-        observation_width: int = 640,
+        observation_height: int | None = None,
+        observation_width: int | None = None,
         episode_length: int = DEFAULT_EPISODE_LENGTH,
         render_mode: str = "rgb_array",
     ):
@@ -240,20 +240,24 @@ class RoboTwinEnv(gym.Env):
         self.episode_index = episode_index
         self._reset_stride = n_envs
         self.camera_names = list(camera_names)
-        self.observation_height = observation_height
-        self.observation_width = observation_width
+        # Match the declared observation_space to the camera resolution in
+        # RoboTwin's YAML — otherwise gym.vector's concatenate pre-allocates
+        # a buffer of the wrong shape and np.stack raises ValueError.
+        setup_kwargs = _load_robotwin_setup_kwargs(task_name)
+        self.observation_height = observation_height or setup_kwargs["head_camera_h"]
+        self.observation_width = observation_width or setup_kwargs["head_camera_w"]
         self.episode_length = episode_length
         self.render_mode = render_mode
 
         self._env: Any | None = None  # deferred — created on first reset() inside worker
         self._step_count: int = 0
-        self._black_frame = np.zeros((observation_height, observation_width, 3), dtype=np.uint8)
+        self._black_frame = np.zeros((self.observation_height, self.observation_width, 3), dtype=np.uint8)
 
         image_spaces = {
             cam: spaces.Box(
                 low=0,
                 high=255,
-                shape=(observation_height, observation_width, 3),
+                shape=(self.observation_height, self.observation_width, 3),
                 dtype=np.uint8,
             )
             for cam in self.camera_names

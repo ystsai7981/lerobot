@@ -594,11 +594,14 @@ class RoboTwinEnvConfig(EnvConfig):
     episode_length: int = 300
     obs_type: str = "pixels_agent_pos"
     render_mode: str = "rgb_array"
-    # Comma-separated list of cameras to include in observations.
-    # Available: head_camera, front_camera, left_wrist, right_wrist
-    camera_names: str = "head_camera,front_camera,left_wrist,right_wrist"
-    observation_height: int = 480
-    observation_width: int = 640
+    # Available cameras from RoboTwin's aloha-agilex embodiment: head_camera
+    # (torso-mounted) + left_camera / right_camera (wrists).
+    camera_names: str = "head_camera,left_camera,right_camera"
+    # Match the D435 dims in task_config/demo_clean.yml (_camera_config.yml).
+    # Gym's vector-env concatenate pre-allocates buffers of this shape, so it
+    # must equal what SAPIEN actually renders.
+    observation_height: int = 240
+    observation_width: int = 320
     features: dict[str, PolicyFeature] = field(
         default_factory=lambda: {
             ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(14,)),
@@ -608,9 +611,8 @@ class RoboTwinEnvConfig(EnvConfig):
         default_factory=lambda: {
             ACTION: ACTION,
             "pixels/head_camera": f"{OBS_IMAGES}.head_camera",
-            "pixels/front_camera": f"{OBS_IMAGES}.front_camera",
-            "pixels/left_wrist": f"{OBS_IMAGES}.left_wrist",
-            "pixels/right_wrist": f"{OBS_IMAGES}.right_wrist",
+            "pixels/left_camera": f"{OBS_IMAGES}.left_camera",
+            "pixels/right_camera": f"{OBS_IMAGES}.right_camera",
             "agent_pos": OBS_STATE,
         }
     )
