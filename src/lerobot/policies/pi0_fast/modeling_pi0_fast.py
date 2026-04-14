@@ -260,6 +260,8 @@ class PI0FastPaliGemma(nn.Module):
             image = image.to(torch.float32)
         image_outputs = self.paligemma.model.get_image_features(image)
         features = image_outputs.pooler_output
+        norm = 2048**0.5
+        features = features / norm * norm
         if features.dtype != out_dtype:
             features = features.to(out_dtype)
         return features
