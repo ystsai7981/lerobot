@@ -123,6 +123,7 @@ def build_train_command(spec: ProfilingSpec, run_dir: Path, profile_mode: str) -
         "--save_checkpoint=false",
         f"--save_freq={spec.steps}",
         "--wandb.enable=false",
+        "--policy.push_to_hub=false",
         "--num_workers=0",
         "--log_freq=1",
         "--cudnn_deterministic=true",
