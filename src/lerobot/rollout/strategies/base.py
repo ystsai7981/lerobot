@@ -22,7 +22,7 @@ import time
 from lerobot.utils.robot_utils import precise_sleep
 
 from ..context import RolloutContext
-from . import RolloutStrategy, infer_action
+from .core import RolloutStrategy, infer_action
 
 logger = logging.getLogger(__name__)
 

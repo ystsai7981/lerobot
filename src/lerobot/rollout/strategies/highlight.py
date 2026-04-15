@@ -21,6 +21,7 @@ import logging
 import time
 from threading import Event as ThreadingEvent
 
+from lerobot.common.control_utils import is_headless
 from lerobot.datasets import VideoEncodingManager
 from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame
@@ -44,8 +45,6 @@ class HighlightStrategy(RolloutStrategy):
     2. Live recording continues until the save key is pressed again.
     3. The episode is saved and the ring buffer resumes capturing.
 
-    All actions flow through ``robot_action_processor`` before reaching
-    the robot, supporting EE-space recording with joint-space robots.
     """
 
     config: HighlightStrategyConfig
@@ -173,7 +172,6 @@ class HighlightStrategy(RolloutStrategy):
 
     def _setup_keyboard(self) -> None:
         """Set up keyboard listener for the save key."""
-        from lerobot.common.control_utils import is_headless
 
         if is_headless():
             logger.warning("Headless environment — highlight save key unavailable")

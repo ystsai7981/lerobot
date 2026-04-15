@@ -17,16 +17,12 @@
 """Policy deployment engine with pluggable rollout strategies.
 
 ``lerobot-rollout`` is the single CLI for running trained policies on
-real robots.  It uses a **Strategy Pattern** to provide completely
-isolated, mutually exclusive execution loops:
+real robots.
 
     --strategy.type=base       24/7 autonomous rollout (no recording)
     --strategy.type=sentry     Continuous recording with auto-upload
     --strategy.type=highlight  Ring buffer + keystroke save
     --strategy.type=dagger     Human-in-the-loop (DAgger/RaC)
-
-All strategies accept ``--rtc.enabled=true`` for asynchronous inference
-with slow VLA models (Pi0, Pi0.5, SmolVLA).
 
 Usage examples::
 
@@ -92,6 +88,7 @@ from lerobot.teleoperators import (  # noqa: F401
     so_leader,
     unitree_g1 as unitree_g1_teleop,
 )
+from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.utils import init_logging
 
 logger = logging.getLogger(__name__)
@@ -123,8 +120,6 @@ def rollout(cfg: RolloutConfig):
 
 
 def main():
-    from lerobot.utils.import_utils import register_third_party_plugins
-
     register_third_party_plugins()
     rollout()
 

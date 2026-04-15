@@ -28,10 +28,12 @@ from lerobot.utils.constants import OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame
 from lerobot.utils.robot_utils import precise_sleep
 
+from ..inference import InferenceEngine
+
 if TYPE_CHECKING:
-    from lerobot.rollout.configs import RolloutStrategyConfig
-    from lerobot.rollout.context import RolloutContext
-    from lerobot.rollout.inference import InferenceEngine
+    from ..configs import RolloutStrategyConfig
+    from ..context import RolloutContext
+    from ..inference import InferenceEngine
 
 
 class RolloutStrategy(abc.ABC):
@@ -54,7 +56,6 @@ class RolloutStrategy(abc.ABC):
         Call this from ``setup()`` to avoid duplicating the engine
         construction across every strategy.
         """
-        from lerobot.rollout.inference import InferenceEngine
 
         self._interpolator = ActionInterpolator(multiplier=ctx.cfg.interpolation_multiplier)
         self._engine = InferenceEngine(
