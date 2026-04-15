@@ -5,7 +5,7 @@ RoboTwin 2.0 is a **large-scale dual-arm manipulation benchmark** built on the S
 - Paper: [RoboTwin 2.0: A Scalable Data Generator and Benchmark with Strong Domain Randomization for Robust Bimanual Robotic Manipulation](https://robotwin-platform.github.io)
 - GitHub: [RoboTwin-Platform/RoboTwin](https://github.com/RoboTwin-Platform/RoboTwin)
 - Leaderboard: [robotwin-platform.github.io/leaderboard](https://robotwin-platform.github.io/leaderboard)
-- Dataset: [hxma/RoboTwin-LeRobot-v3.0](https://huggingface.co/datasets/hxma/RoboTwin-LeRobot-v3.0)
+- Dataset: [lerobot/robotwin_unified](https://huggingface.co/datasets/lerobot/robotwin_unified)
 
 ## Overview
 
@@ -41,7 +41,7 @@ Pass a comma-separated list to `--env.task` to run multiple tasks in a single ev
 The RoboTwin 2.0 dataset is available in **LeRobot v3.0 format** on the Hugging Face Hub:
 
 ```
-hxma/RoboTwin-LeRobot-v3.0
+lerobot/robotwin_unified
 ```
 
 It contains over 100,000 pre-collected trajectories across all 60 tasks (79.6 GB, Apache 2.0 license). No format conversion is needed — it is already in the correct LeRobot v3.0 schema with video observations and action labels.
@@ -51,7 +51,7 @@ You can load it directly with the HF Datasets library:
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("hxma/RoboTwin-LeRobot-v3.0", split="train")
+ds = load_dataset("lerobot/robotwin_unified", split="train")
 ```
 
 ## Installation

@@ -586,7 +586,7 @@ class RoboTwinEnvConfig(EnvConfig):
     (7 per arm). All four cameras are enabled by default.
 
     See: https://robotwin-platform.github.io
-    Dataset: https://huggingface.co/datasets/hxma/RoboTwin-LeRobot-v3.0
+    Dataset: https://huggingface.co/datasets/lerobot/robotwin_unified
     """
 
     task: str = "beat_block_hammer"  # single task or comma-separated list
