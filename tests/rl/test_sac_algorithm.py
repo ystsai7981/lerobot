@@ -16,6 +16,9 @@
 """Tests for the RL algorithm abstraction and SACAlgorithm implementation."""
 
 import pytest
+
+pytest.importorskip("grpc")
+
 import torch
 
 from lerobot.configs.types import FeatureType, PolicyFeature

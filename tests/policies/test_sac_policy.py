@@ -15,6 +15,9 @@
 # limitations under the License.
 
 import pytest
+
+pytest.importorskip("grpc")
+
 import torch
 from torch import Tensor, nn
 
