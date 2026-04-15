@@ -168,7 +168,7 @@ jobs:
                     add_extra xvla
                     ;;
                   *)
-                    echo "Unknown profiling policy '${policy}'" >&2
+                    echo "Unknown profiling policy ${policy}" >&2
                     exit 1
                     ;;
                 esac
