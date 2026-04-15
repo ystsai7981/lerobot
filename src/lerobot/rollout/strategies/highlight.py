@@ -30,7 +30,7 @@ from lerobot.utils.robot_utils import precise_sleep
 from ..configs import HighlightStrategyConfig
 from ..context import RolloutContext
 from ..ring_buffer import RolloutRingBuffer
-from . import RolloutStrategy, infer_action
+from .core import RolloutStrategy, send_next_action
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,9 @@ class HighlightStrategy(RolloutStrategy):
     2. Live recording continues until the save key is pressed again.
     3. The episode is saved and the ring buffer resumes capturing.
 
+    Requires ``streaming_encoding=True`` (enforced in config validation)
+    so that ``dataset.add_frame`` is a non-blocking queue put — draining
+    900 frames stays sub-ms per frame.
     """
 
     config: HighlightStrategyConfig
@@ -63,10 +66,10 @@ class HighlightStrategy(RolloutStrategy):
         self._ring = RolloutRingBuffer(
             max_seconds=self.config.ring_buffer_seconds,
             max_memory_mb=self.config.ring_buffer_max_memory_mb,
-            fps=ctx.cfg.fps,
+            fps=ctx.runtime.cfg.fps,
         )
 
-        self._shutdown_event = ctx.shutdown_event
+        self._shutdown_event = ctx.runtime.shutdown_event
         self._setup_keyboard()
         logger.info(
             "Highlight strategy ready (buffer=%.0fs, key='%s')",
@@ -76,74 +79,67 @@ class HighlightStrategy(RolloutStrategy):
 
     def run(self, ctx: RolloutContext) -> None:
         engine = self._engine
-        cfg = ctx.cfg
-        robot = ctx.robot_wrapper
-        dataset = ctx.dataset
+        cfg = ctx.runtime.cfg
+        robot = ctx.hardware.robot_wrapper
+        dataset = ctx.data.dataset
         ring = self._ring
         interpolator = self._interpolator
 
         control_interval = interpolator.get_control_interval(cfg.fps)
-        ordered_keys = ctx.ordered_action_keys
+        ordered_keys = ctx.data.ordered_action_keys
         features = dataset.features
 
-        if engine.is_rtc:
-            engine.resume()
+        engine.resume()
 
         start_time = time.perf_counter()
         task_str = cfg.dataset.single_task if cfg.dataset else cfg.task
 
         with VideoEncodingManager(dataset):
             try:
-                while not ctx.shutdown_event.is_set():
+                while not ctx.runtime.shutdown_event.is_set():
                     loop_start = time.perf_counter()
 
                     if cfg.duration > 0 and (time.perf_counter() - start_time) >= cfg.duration:
                         break
 
                     obs = robot.get_observation()
-                    obs_processed = ctx.robot_observation_processor(obs)
-
-                    if engine.is_rtc:
-                        engine.update_observation(obs_processed)
+                    obs_processed = ctx.processors.robot_observation_processor(obs)
+                    engine.notify_observation(obs_processed)
 
                     if self._handle_warmup(cfg.use_torch_compile, loop_start, control_interval):
                         continue
 
-                    action_dict = infer_action(
+                    action_dict = send_next_action(
                         engine, obs_processed, obs, ctx, interpolator, ordered_keys, features
                     )
 
-                    # Build frame for ring buffer / live recording
                     if action_dict is not None:
                         obs_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
                         action_frame = build_dataset_frame(features, action_dict, prefix=ACTION)
                         frame = {**obs_frame, **action_frame, "task": task_str}
 
-                        # Handle save key toggle
                         if self._save_requested.is_set():
                             self._save_requested.clear()
                             if not self._recording_live.is_set():
                                 logger.info(
-                                    "Flushing ring buffer (%d frames) + starting live recording", len(ring)
+                                    "Flushing ring buffer (%d frames) + starting live recording",
+                                    len(ring),
                                 )
                                 for buffered_frame in ring.drain():
                                     dataset.add_frame(buffered_frame)
                                 self._recording_live.set()
                             else:
-                                # Save current frame as the last frame of the episode
                                 dataset.add_frame(frame)
                                 dataset.save_episode()
                                 logger.info("Episode saved")
                                 self._recording_live.clear()
                                 engine.reset()
                                 interpolator.reset()
-                                if engine.is_rtc:
-                                    engine.resume()
+                                engine.resume()
 
                         if self._recording_live.is_set():
                             dataset.add_frame(frame)
                         else:
-                            # Current frame goes into the ring buffer for next potential save.
                             ring.append(frame)
 
                     dt = time.perf_counter() - loop_start
@@ -159,12 +155,12 @@ class HighlightStrategy(RolloutStrategy):
         if self._listener is not None:
             self._listener.stop()
 
-        if ctx.dataset is not None:
-            ctx.dataset.finalize()
-            if ctx.cfg.dataset and ctx.cfg.dataset.push_to_hub:
-                ctx.dataset.push_to_hub(
-                    tags=ctx.cfg.dataset.tags,
-                    private=ctx.cfg.dataset.private,
+        if ctx.data.dataset is not None:
+            ctx.data.dataset.finalize()
+            if ctx.runtime.cfg.dataset and ctx.runtime.cfg.dataset.push_to_hub:
+                ctx.data.dataset.push_to_hub(
+                    tags=ctx.runtime.cfg.dataset.tags,
+                    private=ctx.runtime.cfg.dataset.private,
                 )
 
         self._teardown_hardware(ctx)
@@ -172,7 +168,6 @@ class HighlightStrategy(RolloutStrategy):
 
     def _setup_keyboard(self) -> None:
         """Set up keyboard listener for the save key."""
-
         if is_headless():
             logger.warning("Headless environment — highlight save key unavailable")
             return

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Rollout strategy ABC and shared inference helper."""
+"""Rollout strategy ABC and shared action-dispatch helper."""
 
 from __future__ import annotations
 
@@ -20,20 +20,16 @@ import abc
 import time
 from typing import TYPE_CHECKING
 
-import torch
-
 from lerobot.policies.rtc import ActionInterpolator
-from lerobot.policies.utils import make_robot_action
 from lerobot.utils.constants import OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame
 from lerobot.utils.robot_utils import precise_sleep
 
-from ..inference import InferenceEngine
+from ..inference import InferenceStrategy
 
 if TYPE_CHECKING:
     from ..configs import RolloutStrategyConfig
     from ..context import RolloutContext
-    from ..inference import InferenceEngine
 
 
 class RolloutStrategy(abc.ABC):
@@ -46,33 +42,18 @@ class RolloutStrategy(abc.ABC):
 
     def __init__(self, config: RolloutStrategyConfig) -> None:
         self.config = config
-        self._engine: InferenceEngine | None = None
+        self._engine: InferenceStrategy | None = None
         self._interpolator: ActionInterpolator | None = None
         self._warmup_flushed: bool = False
 
     def _init_engine(self, ctx: RolloutContext) -> None:
-        """Create and start the inference engine and action interpolator.
+        """Attach the inference strategy + interpolator and start the backend.
 
-        Call this from ``setup()`` to avoid duplicating the engine
-        construction across every strategy.
+        Call this from ``setup()`` so strategies share identical setup
+        without duplicating code.
         """
-
-        self._interpolator = ActionInterpolator(multiplier=ctx.cfg.interpolation_multiplier)
-        self._engine = InferenceEngine(
-            policy=ctx.policy,
-            preprocessor=ctx.preprocessor,
-            postprocessor=ctx.postprocessor,
-            robot_wrapper=ctx.robot_wrapper,
-            rtc_config=ctx.cfg.rtc,
-            hw_features=ctx.hw_features,
-            action_keys=ctx.action_keys,
-            task=ctx.cfg.task,
-            fps=ctx.cfg.fps,
-            device=ctx.cfg.device,
-            use_torch_compile=ctx.cfg.use_torch_compile,
-            compile_warmup_inferences=ctx.cfg.compile_warmup_inferences,
-            shutdown_event=ctx.shutdown_event,
-        )
+        self._interpolator = ActionInterpolator(multiplier=ctx.runtime.cfg.interpolation_multiplier)
+        self._engine = ctx.policy.inference
         self._engine.start()
         self._warmup_flushed = False
 
@@ -87,7 +68,7 @@ class RolloutStrategy(abc.ABC):
         interpolator = self._interpolator
         if not use_torch_compile:
             return False
-        if not engine.compile_warmup_done.is_set():
+        if not engine.ready:
             dt = time.perf_counter() - loop_start
             if (sleep_t := control_interval - dt) > 0:
                 precise_sleep(sleep_t)
@@ -96,18 +77,19 @@ class RolloutStrategy(abc.ABC):
             engine.reset()
             interpolator.reset()
             self._warmup_flushed = True
-            if engine.is_rtc:
-                engine.resume()
+            engine.resume()
         return False
 
     def _teardown_hardware(self, ctx: RolloutContext) -> None:
         """Stop the inference engine and disconnect hardware."""
         if self._engine is not None:
             self._engine.stop()
-        if ctx.robot.is_connected:
-            ctx.robot.disconnect()
-        if ctx.teleop is not None and ctx.teleop.is_connected:
-            ctx.teleop.disconnect()
+        robot = ctx.hardware.robot_wrapper.inner
+        if robot.is_connected:
+            robot.disconnect()
+        teleop = ctx.hardware.teleop
+        if teleop is not None and teleop.is_connected:
+            teleop.disconnect()
 
     @abc.abstractmethod
     def setup(self, ctx: RolloutContext) -> None:
@@ -123,12 +105,12 @@ class RolloutStrategy(abc.ABC):
 
 
 # ---------------------------------------------------------------------------
-# Shared inference helper
+# Shared action-dispatch helper
 # ---------------------------------------------------------------------------
 
 
-def infer_action(
-    engine: InferenceEngine,
+def send_next_action(
+    engine: InferenceStrategy,
     obs_processed: dict,
     obs_raw: dict,
     ctx: RolloutContext,
@@ -136,53 +118,27 @@ def infer_action(
     ordered_keys: list[str],
     features: dict,
 ) -> dict | None:
-    """Run one policy inference step and send the resulting action to the robot.
+    """Dispatch the next action to the robot.
 
-    Handles both sync and RTC backends.  Uses the interpolator for smooth
-    control at higher-than-inference rates (works with any multiplier,
-    including 1 where it acts as a pass-through).
+    Pulls the next action tensor from the inference strategy, feeds the
+    interpolator, and sends the interpolated action through the
+    ``robot_action_processor`` to the robot.  Works identically for
+    sync and async backends — the strategy never needs to branch.
 
-    Parameters
-    ----------
-    engine:
-        The inference engine (sync or RTC).
-    obs_processed:
-        Observation dict after ``robot_observation_processor``.
-    obs_raw:
-        Raw observation dict (needed by ``robot_action_processor``).
-    ctx:
-        Rollout context.
-    interpolator:
-        Action interpolator for Nx control rate.
-    ordered_keys:
-        Ordered action feature names (policy-to-robot mapping).
-    features:
-        Feature specification dict for ``build_dataset_frame`` /
-        ``make_robot_action``.  Use ``dataset.features`` when recording,
-        ``ctx.dataset_features`` otherwise.
-
-    Returns
-    -------
-    Action dict sent to the robot, or ``None`` if no action was
-    available (empty RTC queue, interpolator buffer not ready).
+    Returns the action dict that was sent, or ``None`` if no action was
+    ready (e.g. empty async queue, interpolator not yet primed).
     """
-    if engine.is_rtc:
-        if interpolator.needs_new_action():
-            action_tensor = engine.consume_rtc_action()
-            if action_tensor is not None:
-                interpolator.add(action_tensor.cpu())
-    else:
-        if interpolator.needs_new_action():
-            obs_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
-            action_tensor = engine.get_action_sync(obs_frame)
-            action_dict = make_robot_action(action_tensor, features)
-            action_t = torch.tensor([action_dict[k] for k in ordered_keys])
-            interpolator.add(action_t)
+    if interpolator.needs_new_action():
+        obs_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
+        action_tensor = engine.get_action(obs_frame)
+        if action_tensor is not None:
+            interpolator.add(action_tensor.cpu())
 
     interp = interpolator.get()
-    if interp is not None:
-        action_dict = {k: interp[i].item() for i, k in enumerate(ordered_keys) if i < len(interp)}
-        processed = ctx.robot_action_processor((action_dict, obs_raw))
-        ctx.robot_wrapper.send_action(processed)
-        return action_dict
-    return None
+    if interp is None:
+        return None
+
+    action_dict = {k: interp[i].item() for i, k in enumerate(ordered_keys) if i < len(interp)}
+    processed = ctx.processors.robot_action_processor((action_dict, obs_raw))
+    ctx.hardware.robot_wrapper.send_action(processed)
+    return action_dict

@@ -12,50 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Policy deployment engine with pluggable rollout strategies."""
+"""Inference strategy package — backend-agnostic action production.
 
-from .configs import (
-    BaseStrategyConfig,
-    DAggerStrategyConfig,
-    HighlightStrategyConfig,
-    RolloutConfig,
-    RolloutDatasetConfig,
-    RolloutStrategyConfig,
-    SentryStrategyConfig,
-)
-from .context import RolloutContext, build_rollout_context
-from .inference import (
-    InferenceStrategy,
+Concrete strategies (sync, RTC, …) expose the same small interface so
+rollout strategies never branch on the inference backend.
+"""
+
+from .base import InferenceStrategy
+from .factory import (
     InferenceStrategyConfig,
     RTCInferenceConfig,
-    RTCInferenceStrategy,
     SyncInferenceConfig,
-    SyncInferenceStrategy,
     create_inference_strategy,
 )
-from .ring_buffer import RolloutRingBuffer
-from .robot_wrapper import ThreadSafeRobot
-from .strategies import RolloutStrategy, create_strategy
+from .rtc import RTCInferenceStrategy
+from .sync import SyncInferenceStrategy
 
 __all__ = [
-    "BaseStrategyConfig",
-    "DAggerStrategyConfig",
-    "HighlightStrategyConfig",
     "InferenceStrategy",
     "InferenceStrategyConfig",
     "RTCInferenceConfig",
     "RTCInferenceStrategy",
-    "RolloutConfig",
-    "RolloutContext",
-    "RolloutDatasetConfig",
-    "RolloutRingBuffer",
-    "RolloutStrategy",
-    "RolloutStrategyConfig",
-    "SentryStrategyConfig",
     "SyncInferenceConfig",
     "SyncInferenceStrategy",
-    "ThreadSafeRobot",
-    "build_rollout_context",
     "create_inference_strategy",
-    "create_strategy",
 ]

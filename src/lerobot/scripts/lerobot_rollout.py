@@ -37,7 +37,7 @@ Usage examples::
     lerobot-rollout \\
         --strategy.type=base \\
         --policy.path=lerobot/pi0_base \\
-        --rtc.enabled=true --rtc.execution_horizon=10 \\
+        --inference.type=rtc --inference.rtc.execution_horizon=10 \\
         --robot.type=so100_follower \\
         --task="pick up cube" --duration=60
 
@@ -47,7 +47,7 @@ Usage examples::
         --strategy.episode_duration_s=120 \\
         --strategy.upload_every_n_episodes=5 \\
         --policy.path=lerobot/pi0_base \\
-        --rtc.enabled=true \\
+        --inference.type=rtc \\
         --robot.type=so100_follower \\
         --dataset.repo_id=user/sentry-data \\
         --dataset.single_task="patrol" --duration=3600
@@ -68,7 +68,6 @@ from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense import RealSenseCameraConfig  # noqa: F401
 from lerobot.cameras.zmq import ZMQCameraConfig  # noqa: F401
 from lerobot.configs import parser
-from lerobot.rl.process import ProcessSignalHandler
 from lerobot.robots import (  # noqa: F401
     bi_openarm_follower,
     bi_so_follower,
@@ -89,6 +88,7 @@ from lerobot.teleoperators import (  # noqa: F401
     unitree_g1 as unitree_g1_teleop,
 )
 from lerobot.utils.import_utils import register_third_party_plugins
+from lerobot.utils.process import ProcessSignalHandler
 from lerobot.utils.utils import init_logging
 
 logger = logging.getLogger(__name__)

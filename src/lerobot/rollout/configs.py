@@ -24,9 +24,10 @@ from pathlib import Path
 import draccus
 
 from lerobot.configs import PreTrainedConfig, parser
-from lerobot.policies.rtc import RTCConfig
 from lerobot.robots.config import RobotConfig
 from lerobot.teleoperators.config import TeleoperatorConfig
+
+from .inference import InferenceStrategyConfig, SyncInferenceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,11 @@ class DAggerStrategyConfig(RolloutStrategyConfig):
 
     Alternates between autonomous policy execution and human intervention.
     Intervention frames are tagged with ``intervention=True``.
+
+    When ``record_autonomous=True`` (default) both autonomous and correction
+    frames are recorded — this requires streaming encoding so the policy
+    loop never blocks on disk I/O.  Set to ``False`` to record only the
+    human-correction windows; encoding can then happen between phases.
     """
 
     episode_time_s: float = 120.0
@@ -100,6 +106,7 @@ class DAggerStrategyConfig(RolloutStrategyConfig):
     calibrate: bool = False
     log_hz: bool = True
     hz_log_interval_s: float = 2.0
+    record_autonomous: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +160,8 @@ class RolloutConfig:
     # Strategy (polymorphic: --strategy.type=base|sentry|highlight|dagger)
     strategy: RolloutStrategyConfig = field(default_factory=BaseStrategyConfig)
 
-    # Inference backend
-    rtc: RTCConfig = field(default_factory=RTCConfig)
+    # Inference backend (polymorphic: --inference.type=sync|rtc)
+    inference: InferenceStrategyConfig = field(default_factory=SyncInferenceConfig)
 
     # Dataset (required for sentry, highlight, dagger; None for base)
     dataset: RolloutDatasetConfig | None = None
@@ -209,6 +216,25 @@ class RolloutConfig:
             and not self.dataset.streaming_encoding
         ):
             logger.warning("Sentry mode forces streaming_encoding=True")
+            self.dataset.streaming_encoding = True
+
+        # Highlight writes frames while the policy is still running, so streaming is mandatory.
+        if (
+            isinstance(self.strategy, HighlightStrategyConfig)
+            and self.dataset is not None
+            and not self.dataset.streaming_encoding
+        ):
+            logger.warning("Highlight mode forces streaming_encoding=True")
+            self.dataset.streaming_encoding = True
+
+        # DAgger: streaming is mandatory only when the autonomous phase is also recorded.
+        if (
+            isinstance(self.strategy, DAggerStrategyConfig)
+            and self.strategy.record_autonomous
+            and self.dataset is not None
+            and not self.dataset.streaming_encoding
+        ):
+            logger.warning("DAgger with record_autonomous=True forces streaming_encoding=True")
             self.dataset.streaming_encoding = True
 
     @classmethod

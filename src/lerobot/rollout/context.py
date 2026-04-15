@@ -12,10 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Rollout context: shared state created once before strategy dispatch."""
+"""Rollout context: shared state created once before strategy dispatch.
+
+Grouped into five topical sub-contexts — :class:`RuntimeContext`,
+:class:`HardwareContext`, :class:`PolicyContext`, :class:`ProcessorContext`,
+and :class:`DatasetContext` — assembled into :class:`RolloutContext`.
+"""
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 from dataclasses import dataclass, field
 from threading import Event
@@ -38,11 +44,16 @@ from lerobot.processor import (
     make_default_processors,
     rename_stats,
 )
-from lerobot.robots import Robot, make_robot_from_config
+from lerobot.robots import make_robot_from_config
 from lerobot.teleoperators import Teleoperator, make_teleoperator_from_config
 from lerobot.utils.feature_utils import combine_feature_dicts, hw_to_dataset_features
 
-from .configs import BaseStrategyConfig, DAggerStrategyConfig, RolloutConfig
+from .configs import BaseStrategyConfig, DAggerStrategyConfig, RolloutConfig, SentryStrategyConfig
+from .inference import (
+    InferenceStrategy,
+    RTCInferenceConfig,
+    create_inference_strategy,
+)
 from .robot_wrapper import ThreadSafeRobot
 
 logger = logging.getLogger(__name__)
@@ -68,71 +79,108 @@ def _resolve_action_key_order(
     return policy_action_names
 
 
+# ---------------------------------------------------------------------------
+# Sub-contexts
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RuntimeContext:
+    """Runtime knobs shared with every strategy."""
+
+    cfg: RolloutConfig
+    shutdown_event: Event
+
+
+@dataclass
+class HardwareContext:
+    """Connected hardware.
+
+    The raw robot is available via ``robot_wrapper.inner`` when needed
+    (e.g. for disconnect); strategies should otherwise go through the
+    thread-safe wrapper.
+    """
+
+    robot_wrapper: ThreadSafeRobot
+    teleop: Teleoperator | None
+
+
+@dataclass
+class PolicyContext:
+    """Loaded policy and its inference strategy."""
+
+    policy: PreTrainedPolicy
+    preprocessor: PolicyProcessorPipeline
+    postprocessor: PolicyProcessorPipeline
+    inference: InferenceStrategy
+
+
+@dataclass
+class ProcessorContext:
+    """Robot-side pipelines (run outside the policy)."""
+
+    teleop_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction]
+    robot_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction]
+    robot_observation_processor: RobotProcessorPipeline[RobotObservation, RobotObservation]
+
+
+@dataclass
+class DatasetContext:
+    """Dataset and feature bookkeeping."""
+
+    dataset: LeRobotDataset | None
+    dataset_features: dict = field(default_factory=dict)
+    hw_features: dict = field(default_factory=dict)
+    ordered_action_keys: list[str] = field(default_factory=list)
+
+
 @dataclass
 class RolloutContext:
-    """Bundle of shared resources passed to every rollout strategy.
+    """Bundle of sub-contexts passed to every rollout strategy.
 
     Built once by :func:`build_rollout_context` before strategy dispatch.
     """
 
-    cfg: RolloutConfig
-    robot: Robot
-    robot_wrapper: ThreadSafeRobot
-    teleop: Teleoperator | None
-    policy: PreTrainedPolicy
-    preprocessor: PolicyProcessorPipeline
-    postprocessor: PolicyProcessorPipeline
-    teleop_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction]
-    robot_action_processor: RobotProcessorPipeline[tuple[RobotAction, RobotObservation], RobotAction]
-    robot_observation_processor: RobotProcessorPipeline[RobotObservation, RobotObservation]
-    dataset: LeRobotDataset | None
-    shutdown_event: Event = field(default_factory=Event)
-    dataset_features: dict = field(default_factory=dict)
-    action_keys: list[str] = field(default_factory=list)
-    ordered_action_keys: list[str] = field(default_factory=list)
-    hw_features: dict = field(default_factory=dict)
+    runtime: RuntimeContext
+    hardware: HardwareContext
+    policy: PolicyContext
+    processors: ProcessorContext
+    data: DatasetContext
 
 
-def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutContext:
-    """Wire up hardware, policy, processors, and dataset from config.
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
 
-    This function performs all the one-time setup that every strategy
-    needs, keeping the strategy implementations lean.
+
+def build_rollout_context(
+    cfg: RolloutConfig,
+    shutdown_event: Event,
+    teleop_action_processor: RobotProcessorPipeline | None = None,
+    robot_action_processor: RobotProcessorPipeline | None = None,
+    robot_observation_processor: RobotProcessorPipeline | None = None,
+) -> RolloutContext:
+    """Wire up policy, processors, hardware, dataset, and inference strategy.
+
+    The order is policy-first / hardware-last so a bad ``--policy.path``
+    fails fast without touching the robot.
     """
-    # --- Hardware ---
-    robot = make_robot_from_config(cfg.robot)
-    robot.connect()
-    robot_wrapper = ThreadSafeRobot(robot)
+    is_rtc = isinstance(cfg.inference, RTCInferenceConfig)
 
-    teleop = None
-    if cfg.teleop is not None:
-        teleop = make_teleoperator_from_config(cfg.teleop)
-        teleop.connect()
-
-    # --- Processors ---
-    teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
-
-    # --- Policy ---
-    # Use cfg.policy directly (already loaded in RolloutConfig.__post_init__)
-    # instead of reloading from disk.
+    # --- 1. Policy (heavy I/O, but no hardware yet) -------------------
     policy_config = cfg.policy
-    use_rtc = cfg.rtc.enabled
     policy_class = get_policy_class(policy_config.type)
 
-    # Reload config from pretrained path for full model parameters
     full_config = PreTrainedConfig.from_pretrained(cfg.policy.pretrained_path)
-    # Merge any CLI overrides from cfg.policy into full_config
     for attr in ("device", "use_amp"):
         if hasattr(cfg.policy, attr) and hasattr(full_config, attr):
             cli_val = getattr(cfg.policy, attr)
             if cli_val is not None:
                 setattr(full_config, attr, cli_val)
 
-    # Set compile_model for pi0/pi05
     if hasattr(full_config, "compile_model"):
         full_config.compile_model = cfg.use_torch_compile
 
-    # Handle PEFT models
     if full_config.use_peft:
         from peft import PeftConfig, PeftModel
 
@@ -145,16 +193,14 @@ def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutC
     else:
         policy = policy_class.from_pretrained(cfg.policy.pretrained_path, config=full_config)
 
-    # Enable RTC on the policy
-    if use_rtc:
-        policy.config.rtc_config = cfg.rtc
+    if is_rtc:
+        policy.config.rtc_config = cfg.inference.rtc
         if hasattr(policy, "init_rtc_processor"):
             policy.init_rtc_processor()
 
     policy = policy.to(cfg.device)
     policy.eval()
 
-    # Apply torch.compile if requested (skip pi0/pi05 — they handle their own)
     if cfg.use_torch_compile and policy.type not in ("pi0", "pi05"):
         try:
             if hasattr(torch, "compile"):
@@ -168,18 +214,34 @@ def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutC
         except Exception as e:
             logger.warning("Failed to apply torch.compile: %s", e)
 
-    # --- Observation features ---
-    # Hardware-level features: camera features are tuples (H, W, C), state
-    # features are the ``float`` type.  This is the canonical pattern used
-    # throughout the codebase (see feature_utils.py:hw_to_dataset_features).
+    # --- 2. Robot-side processors (user-supplied or defaults) --------
+    if (
+        teleop_action_processor is None
+        or robot_action_processor is None
+        or robot_observation_processor is None
+    ):
+        _t, _r, _o = make_default_processors()
+        teleop_action_processor = teleop_action_processor or _t
+        robot_action_processor = robot_action_processor or _r
+        robot_observation_processor = robot_observation_processor or _o
+
+    # --- 3. Hardware (heaviest side-effect, deferred) -----------------
+    robot = make_robot_from_config(cfg.robot)
+    robot.connect()
+    robot_wrapper = ThreadSafeRobot(robot)
+
+    teleop = None
+    if cfg.teleop is not None:
+        teleop = make_teleoperator_from_config(cfg.teleop)
+        teleop.connect()
+
+    # --- 4. Features + action-key reconciliation ---------------------
     all_obs_features = robot.observation_features
     observation_features_hw = {
         k: v for k, v in all_obs_features.items() if v is float or isinstance(v, tuple)
     }
-
     action_features_hw = robot.action_features
 
-    # Build dataset features
     dataset_features = combine_feature_dicts(
         aggregate_pipeline_dataset_features(
             pipeline=teleop_action_processor,
@@ -192,22 +254,22 @@ def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutC
             use_videos=cfg.dataset.video if cfg.dataset else True,
         ),
     )
-
     hw_features = hw_to_dataset_features(observation_features_hw, "observation")
-
-    # Action keys
-    action_keys = list(robot.action_features.keys())
-
-    # Ordered action keys (reconcile policy vs dataset ordering)
+    raw_action_keys = list(robot.action_features.keys())
     policy_action_names = getattr(policy_config, "action_feature_names", None)
     ordered_action_keys = _resolve_action_key_order(
         list(policy_action_names) if policy_action_names else None,
-        action_keys,
+        raw_action_keys,
     )
 
-    # --- Dataset ---
+    # --- 5. Dataset (Sentry gets a unique per-run suffix) -------------
     dataset = None
     if cfg.dataset is not None and not isinstance(cfg.strategy, BaseStrategyConfig):
+        if not cfg.resume and isinstance(cfg.strategy, SentryStrategyConfig) and cfg.dataset.repo_id:
+            suffix = _dt.datetime.now(_dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+            cfg.dataset.repo_id = f"{cfg.dataset.repo_id}-{suffix}"
+            logger.info("Sentry mode: using run-suffixed repo_id=%s", cfg.dataset.repo_id)
+
         if cfg.resume:
             dataset = LeRobotDataset.resume(
                 cfg.dataset.repo_id,
@@ -222,10 +284,9 @@ def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutC
                 * len(robot.cameras if hasattr(robot, "cameras") else []),
             )
         else:
-            # Add intervention column for DAgger strategy
             if isinstance(cfg.strategy, DAggerStrategyConfig):
                 dataset_features["intervention"] = {
-                    "dtype": "int64",
+                    "dtype": "bool",
                     "shape": (1,),
                     "names": None,
                 }
@@ -247,7 +308,7 @@ def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutC
                 encoder_threads=cfg.dataset.encoder_threads,
             )
 
-    # --- Pre/post processors ---
+    # --- 6. Policy pre/post processors (needs dataset stats if any) ---
     dataset_stats = None
     if dataset is not None:
         dataset_stats = rename_stats(
@@ -265,21 +326,44 @@ def build_rollout_context(cfg: RolloutConfig, shutdown_event: Event) -> RolloutC
         },
     )
 
-    return RolloutContext(
-        cfg=cfg,
-        robot=robot,
-        robot_wrapper=robot_wrapper,
-        teleop=teleop,
+    # --- 7. Inference strategy (needs policy + pre/post + hardware) --
+    task_str = cfg.dataset.single_task if cfg.dataset else cfg.task
+    inference_strategy = create_inference_strategy(
+        cfg.inference,
         policy=policy,
         preprocessor=preprocessor,
         postprocessor=postprocessor,
-        teleop_action_processor=teleop_action_processor,
-        robot_action_processor=robot_action_processor,
-        robot_observation_processor=robot_observation_processor,
-        dataset=dataset,
-        shutdown_event=shutdown_event,
-        dataset_features=dataset_features,
-        action_keys=action_keys,
-        ordered_action_keys=ordered_action_keys,
+        robot_wrapper=robot_wrapper,
         hw_features=hw_features,
+        dataset_features=dataset_features,
+        ordered_action_keys=ordered_action_keys,
+        task=task_str,
+        fps=cfg.fps,
+        device=cfg.device,
+        use_torch_compile=cfg.use_torch_compile,
+        compile_warmup_inferences=cfg.compile_warmup_inferences,
+        shutdown_event=shutdown_event,
+    )
+
+    # --- 8. Assemble ---------------------------------------------------
+    return RolloutContext(
+        runtime=RuntimeContext(cfg=cfg, shutdown_event=shutdown_event),
+        hardware=HardwareContext(robot_wrapper=robot_wrapper, teleop=teleop),
+        policy=PolicyContext(
+            policy=policy,
+            preprocessor=preprocessor,
+            postprocessor=postprocessor,
+            inference=inference_strategy,
+        ),
+        processors=ProcessorContext(
+            teleop_action_processor=teleop_action_processor,
+            robot_action_processor=robot_action_processor,
+            robot_observation_processor=robot_observation_processor,
+        ),
+        data=DatasetContext(
+            dataset=dataset,
+            dataset_features=dataset_features,
+            hw_features=hw_features,
+            ordered_action_keys=ordered_action_keys,
+        ),
     )

@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unified inference engine supporting both synchronous and RTC backends.
+"""Real-Time Chunking inference strategy.
 
-The :class:`InferenceEngine` abstracts whether prediction happens inline
-(sync) or in a background thread (RTC), so rollout strategies don't need
-to branch on the inference backend.
+A background thread produces action chunks asynchronously via
+:meth:`policy.predict_action_chunk`.  The main control loop polls
+``get_action`` for the next ready action; observations flow the other
+way via ``notify_observation``.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ import logging
 import math
 import time
 import traceback
-from copy import copy
 from threading import Event, Lock, Thread
 from typing import Any
 
@@ -46,7 +46,8 @@ from lerobot.processor import (
 from lerobot.utils.constants import OBS_STATE
 from lerobot.utils.feature_utils import build_dataset_frame
 
-from .robot_wrapper import ThreadSafeRobot
+from ..robot_wrapper import ThreadSafeRobot
+from .base import InferenceStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -94,42 +95,17 @@ def _normalize_prev_actions_length(prev_actions: torch.Tensor, target_steps: int
 
 
 # ---------------------------------------------------------------------------
-# InferenceEngine
+# RTCInferenceStrategy
 # ---------------------------------------------------------------------------
 
 
-class InferenceEngine:
-    """Abstracts sync vs. RTC (async) inference for rollout strategies.
+class RTCInferenceStrategy(InferenceStrategy):
+    """Async RTC inference: a background thread produces action chunks.
 
-    Parameters
-    ----------
-    policy:
-        The loaded policy (already on device, in eval mode, with RTC
-        processor initialised if applicable).
-    preprocessor / postprocessor:
-        Policy processor pipelines.
-    robot_wrapper:
-        Thread-safe robot wrapper.
-    rtc_config:
-        RTC configuration.  If ``rtc_config.enabled`` is False, the
-        engine operates in synchronous mode.
-    hw_features:
-        Dataset-level feature dict built from ``hw_to_dataset_features``.
-    action_keys:
-        Ordered list of action feature names.
-    task:
-        Task description string.
-    fps:
-        Control loop frequency.
-    device:
-        Torch device string.
-    use_torch_compile:
-        Whether torch.compile warmup is needed.
-    compile_warmup_inferences:
-        Number of warmup inferences before live rollout.
-    rtc_queue_threshold:
-        Maximum RTC action queue size before the background thread
-        pauses generation.  Prevents unbounded queue growth.
+    ``get_action`` pops the next action from the shared queue (or
+    returns ``None`` if the queue is empty).  The main loop should call
+    ``notify_observation`` every tick and ``pause``/``resume`` around
+    human-intervention phases.
     """
 
     def __init__(
@@ -140,7 +116,6 @@ class InferenceEngine:
         robot_wrapper: ThreadSafeRobot,
         rtc_config: RTCConfig,
         hw_features: dict,
-        action_keys: list[str],
         task: str,
         fps: float,
         device: str | None,
@@ -155,7 +130,6 @@ class InferenceEngine:
         self._robot = robot_wrapper
         self._rtc_config = rtc_config
         self._hw_features = hw_features
-        self._action_keys = action_keys
         self._task = task
         self._fps = fps
         self._device = device or "cpu"
@@ -163,8 +137,6 @@ class InferenceEngine:
         self._compile_warmup_inferences = compile_warmup_inferences
         self._rtc_queue_threshold = rtc_queue_threshold
 
-        # RTC state
-        self._use_rtc = rtc_config.enabled
         self._action_queue: ActionQueue | None = None
         self._obs_holder: dict[str, Any] = {}
         self._obs_lock = Lock()
@@ -178,7 +150,7 @@ class InferenceEngine:
         if not self._use_torch_compile:
             self._compile_warmup_done.set()
 
-        # Processor introspection for relative-action re-anchoring
+        # Processor introspection for relative-action re-anchoring.
         self._relative_step = next(
             (s for s in preprocessor.steps if isinstance(s, RelativeActionsProcessorStep) and s.enabled),
             None,
@@ -203,38 +175,33 @@ class InferenceEngine:
     # ------------------------------------------------------------------
 
     @property
-    def is_rtc(self) -> bool:
-        return self._use_rtc
+    def ready(self) -> bool:
+        return self._compile_warmup_done.is_set()
+
+    @property
+    def failed(self) -> bool:
+        """True if the RTC background thread exited due to an unrecoverable error."""
+        return self._rtc_error.is_set()
 
     @property
     def action_queue(self) -> ActionQueue | None:
         return self._action_queue
 
-    @property
-    def compile_warmup_done(self) -> Event:
-        return self._compile_warmup_done
-
-    @property
-    def rtc_failed(self) -> bool:
-        """True if the RTC background thread exited due to an unrecoverable error."""
-        return self._rtc_error.is_set()
-
     def start(self) -> None:
-        """Start the inference engine.  Launches the RTC background thread if enabled."""
-        if self._use_rtc:
-            self._action_queue = ActionQueue(self._rtc_config)
-            self._obs_holder = {
-                "obs": None,
-                "robot_type": self._robot.robot_type,
-            }
-            self._shutdown_event.clear()
-            self._rtc_thread = Thread(
-                target=self._rtc_loop,
-                daemon=True,
-                name="RTCInference",
-            )
-            self._rtc_thread.start()
-            logger.info("RTC inference thread started")
+        """Launch the RTC background thread."""
+        self._action_queue = ActionQueue(self._rtc_config)
+        self._obs_holder = {
+            "obs": None,
+            "robot_type": self._robot.robot_type,
+        }
+        self._shutdown_event.clear()
+        self._rtc_thread = Thread(
+            target=self._rtc_loop,
+            daemon=True,
+            name="RTCInference",
+        )
+        self._rtc_thread.start()
+        logger.info("RTC inference thread started")
 
     def stop(self) -> None:
         """Signal the RTC thread to stop and wait for it."""
@@ -245,67 +212,32 @@ class InferenceEngine:
             self._rtc_thread = None
 
     def pause(self) -> None:
-        """Pause the RTC background thread (used during DAgger takeover)."""
         self._policy_active.clear()
 
     def resume(self) -> None:
-        """Resume the RTC background thread."""
         self._policy_active.set()
 
     def reset(self) -> None:
-        """Reset policy, processors, and action queue between episodes."""
         self._policy.reset()
         self._preprocessor.reset()
         self._postprocessor.reset()
-        if self._use_rtc and self._action_queue is not None:
+        if self._action_queue is not None:
             self._action_queue.clear()
 
     # ------------------------------------------------------------------
-    # Sync inference
+    # Action production (called from main thread)
     # ------------------------------------------------------------------
 
-    def get_action_sync(self, obs_frame: dict) -> torch.Tensor:
-        """Run synchronous single-step inference.
-
-        Parameters
-        ----------
-        obs_frame:
-            Observation dict with numpy arrays (output of ``build_dataset_frame``).
-
-        Returns
-        -------
-        Action tensor on CPU.
-        """
-        observation = copy(obs_frame)
-        policy_device = torch.device(self._device)
-        with (
-            torch.inference_mode(),
-            torch.autocast(device_type=policy_device.type)
-            if policy_device.type == "cuda" and self._policy.config.use_amp
-            else torch.inference_mode(),
-        ):
-            observation = prepare_observation_for_inference(
-                observation, policy_device, self._task, self._robot.robot_type
-            )
-            observation = self._preprocessor(observation)
-            action = self._policy.select_action(observation)
-            action = self._postprocessor(action)
-        return action.squeeze(0).cpu()
-
-    # ------------------------------------------------------------------
-    # RTC: action consumption (called from main thread)
-    # ------------------------------------------------------------------
-
-    def consume_rtc_action(self) -> torch.Tensor | None:
-        """Pop the next action from the RTC action queue.  Returns None if empty."""
+    def get_action(self, obs_frame: dict | None) -> torch.Tensor | None:
+        """Pop the next action from the RTC queue (ignores ``obs_frame``)."""
         if self._action_queue is None:
             return None
         return self._action_queue.get()
 
-    def update_observation(self, obs_filtered: dict) -> None:
-        """Push the latest observation to the shared holder for the RTC thread."""
+    def notify_observation(self, obs: dict) -> None:
+        """Publish the latest observation for the RTC thread to consume."""
         with self._obs_lock:
-            self._obs_holder["obs"] = obs_filtered
+            self._obs_holder["obs"] = obs
 
     # ------------------------------------------------------------------
     # RTC: background inference thread
@@ -342,17 +274,14 @@ class InferenceEngine:
                         latency = latency_tracker.max()
                         delay = math.ceil(latency / time_per_chunk) if latency else 0
 
-                        # Build observation batch using the same pipeline as sync inference
                         obs_batch = build_dataset_frame(self._hw_features, obs, prefix="observation")
                         obs_batch = prepare_observation_for_inference(
                             obs_batch, policy_device, self._task, self._robot.robot_type
                         )
-                        # predict_action_chunk expects batched task format
                         obs_batch["task"] = [self._task]
 
                         preprocessed = self._preprocessor(obs_batch)
 
-                        # Re-anchor leftover for relative-action policies
                         if prev_actions is not None and self._relative_step is not None:
                             state_tensor = preprocessed.get(OBS_STATE)
                             if state_tensor is not None:

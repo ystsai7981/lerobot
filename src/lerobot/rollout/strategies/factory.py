@@ -18,37 +18,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .base import BaseStrategy
 from .core import RolloutStrategy
+from .dagger import DAggerStrategy
+from .highlight import HighlightStrategy
+from .sentry import SentryStrategy
 
 if TYPE_CHECKING:
     from lerobot.rollout.configs import RolloutStrategyConfig
 
 
-def _lazy_strategy_map() -> dict[str, type[RolloutStrategy]]:
-    """Build the strategy type-name → class mapping with lazy imports."""
-    from .base import BaseStrategy
-    from .dagger import DAggerStrategy
-    from .highlight import HighlightStrategy
-    from .sentry import SentryStrategy
-
-    return {
-        "base": BaseStrategy,
-        "sentry": SentryStrategy,
-        "highlight": HighlightStrategy,
-        "dagger": DAggerStrategy,
-    }
-
-
 def create_strategy(config: RolloutStrategyConfig) -> RolloutStrategy:
     """Instantiate the appropriate strategy from a config object.
 
-    Uses ``config.type`` (the name registered via ``draccus.ChoiceRegistry``)
-    to look up the strategy class, so adding a new strategy only requires
-    registering its config subclass and adding one entry to
-    ``_lazy_strategy_map``.
+    Dispatches on ``config.type`` (the name registered via
+    ``draccus.ChoiceRegistry``).
     """
-    strategy_map = _lazy_strategy_map()
-    strategy_cls = strategy_map.get(config.type)
-    if strategy_cls is None:
-        raise ValueError(f"Unknown strategy type '{config.type}'. Available: {sorted(strategy_map.keys())}")
-    return strategy_cls(config)
+    if config.type == "base":
+        return BaseStrategy(config)
+    if config.type == "sentry":
+        return SentryStrategy(config)
+    if config.type == "highlight":
+        return HighlightStrategy(config)
+    if config.type == "dagger":
+        return DAggerStrategy(config)
+    raise ValueError(f"Unknown strategy type '{config.type}'. Available: base, sentry, highlight, dagger")

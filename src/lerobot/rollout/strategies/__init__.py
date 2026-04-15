@@ -14,11 +14,11 @@
 
 """Rollout strategies — public API re-exports."""
 
-from .core import RolloutStrategy, infer_action
+from .core import RolloutStrategy, send_next_action
 from .factory import create_strategy
 
 __all__ = [
     "RolloutStrategy",
     "create_strategy",
-    "infer_action",
+    "send_next_action",
 ]
