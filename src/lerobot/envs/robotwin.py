@@ -40,6 +40,9 @@ ACTION_DIM = 14  # 7 DOF × 2 arms
 ACTION_LOW = -1.0
 ACTION_HIGH = 1.0
 DEFAULT_EPISODE_LENGTH = 300
+# D435 dims from task_config/_camera_config.yml (what demo_clean.yml selects).
+DEFAULT_CAMERA_H = 240
+DEFAULT_CAMERA_W = 320
 
 # Complete task list from RoboTwin 2.0 (60 tasks, as listed on the leaderboard).
 ROBOTWIN_TASKS: tuple[str, ...] = (
@@ -240,12 +243,11 @@ class RoboTwinEnv(gym.Env):
         self.episode_index = episode_index
         self._reset_stride = n_envs
         self.camera_names = list(camera_names)
-        # Match the declared observation_space to the camera resolution in
-        # RoboTwin's YAML — otherwise gym.vector's concatenate pre-allocates
-        # a buffer of the wrong shape and np.stack raises ValueError.
-        setup_kwargs = _load_robotwin_setup_kwargs(task_name)
-        self.observation_height = observation_height or setup_kwargs["head_camera_h"]
-        self.observation_width = observation_width or setup_kwargs["head_camera_w"]
+        # Default to D435 dims (the camera type baked into task_config/demo_clean.yml).
+        # The YAML-driven lookup is deferred to reset() so construction doesn't
+        # import RoboTwin's `envs` module — fast-tests run without RoboTwin installed.
+        self.observation_height = observation_height or DEFAULT_CAMERA_H
+        self.observation_width = observation_width or DEFAULT_CAMERA_W
         self.episode_length = episode_length
         self._max_episode_steps = episode_length  # lerobot_eval.rollout reads this
         self.render_mode = render_mode
