@@ -108,10 +108,18 @@ class SentryStrategy(RolloutStrategy):
                         obs_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
                         action_frame = build_dataset_frame(features, action_dict, prefix=ACTION)
                         frame = {**obs_frame, **action_frame, "task": task_str}
+                        # ``add_frame`` writes to the in-progress episode buffer; the
+                        # background pusher only ever touches *finalised* episode
+                        # artifacts on disk.  The two operate on disjoint state, so
+                        # ``add_frame`` does not need ``_episode_lock``.
                         dataset.add_frame(frame)
 
                     elapsed = time.perf_counter() - episode_start
                     if elapsed >= self.config.episode_duration_s:
+                        # ``save_episode`` finalises the in-progress episode and
+                        # flushes it to disk; ``_episode_lock`` serialises this with
+                        # ``push_to_hub`` (run in the background executor) so the
+                        # pusher never reads a half-written episode.
                         with self._episode_lock:
                             dataset.save_episode()
                         episodes_since_push += 1

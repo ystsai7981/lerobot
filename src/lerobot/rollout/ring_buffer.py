@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections import deque
 
 import numpy as np
+import torch
 
 
 class RolloutRingBuffer:
@@ -27,6 +28,12 @@ class RolloutRingBuffer:
     Stores the last *N* seconds of telemetry in memory, bounded by both
     time (``max_frames``) and memory (``max_memory_bytes``).  When either
     limit is reached the oldest frames are evicted.
+
+    .. note::
+       This class is **single-threaded**.  ``append``/``drain``/``clear``
+       must all be called from the same thread (the rollout main loop).
+       Concurrent access from a background thread will corrupt
+       ``_current_bytes`` accounting.
 
     Parameters
     ----------
@@ -91,7 +98,11 @@ def _estimate_frame_bytes(frame: dict) -> int:
     """Rough byte estimate for a single frame dictionary."""
     total = 0
     for v in frame.values():
-        if isinstance(v, np.ndarray) or hasattr(v, "nbytes"):
+        if isinstance(v, torch.Tensor):
+            # ``torch.Tensor`` has no ``nbytes``; compute it explicitly so the
+            # memory cap is honoured even when frames hold unconverted tensors.
+            total += v.nelement() * v.element_size()
+        elif isinstance(v, np.ndarray) or hasattr(v, "nbytes"):
             total += v.nbytes
         elif isinstance(v, (int, float)):
             total += 8

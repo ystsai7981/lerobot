@@ -118,6 +118,14 @@ class HighlightStrategy(RolloutStrategy):
                         action_frame = build_dataset_frame(features, action_dict, prefix=ACTION)
                         frame = {**obs_frame, **action_frame, "task": task_str}
 
+                        # NOTE: ``is_set()`` then ``clear()`` is not atomic
+                        # against the keyboard thread setting the flag again
+                        # in between — but that is benign: we lose at most one
+                        # toggle, processed on the next iteration.  The
+                        # ``_recording_live`` branch below is reached in the
+                        # SAME iteration after ``clear()`` runs, so a frame
+                        # finalised by ``save_episode()`` is never re-added to
+                        # the next episode.
                         if self._save_requested.is_set():
                             self._save_requested.clear()
                             if not self._recording_live.is_set():

@@ -33,7 +33,7 @@ import contextlib
 import enum
 import logging
 import time
-from threading import Lock
+from threading import Event, Lock
 from typing import Any
 
 import numpy as np
@@ -90,14 +90,16 @@ class DAggerEvents:
         self._phase = DAggerPhase.AUTONOMOUS
         self._pending_transition: str | None = None
 
-        # Episode-level flags (written by keyboard, consumed by main loop)
-        self.exit_early: bool = False
-        self.rerecord_episode: bool = False
-        self.stop_recording: bool = False
+        # Episode-level flags written by keyboard/pedal threads, consumed by
+        # the main loop.  ``threading.Event`` gives us atomic set/clear/check
+        # semantics without taking ``self._lock``.
+        self.exit_early = Event()
+        self.rerecord_episode = Event()
+        self.stop_recording = Event()
 
-        # Reset-phase flags (simpler lifecycle, shared between threads)
-        self.in_reset: bool = False
-        self.start_next_episode: bool = False
+        # Reset-phase flags (simpler lifecycle, shared between threads).
+        self.in_reset = Event()
+        self.start_next_episode = Event()
 
     # -- Thread-safe phase access ------------------------------------------
 
@@ -140,8 +142,8 @@ class DAggerEvents:
         with self._lock:
             self._phase = DAggerPhase.AUTONOMOUS
             self._pending_transition = None
-        self.exit_early = False
-        self.rerecord_episode = False
+        self.exit_early.clear()
+        self.rerecord_episode.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -198,24 +200,24 @@ def _reset_loop(
     """Reset period where the human repositions the environment."""
     logger.info("RESET — press any key to enable teleoperation")
 
-    events.in_reset = True
-    events.start_next_episode = False
+    events.in_reset.set()
+    events.start_next_episode.clear()
 
     obs = robot.get_observation()
     robot_pos = {k: v for k, v in obs.items() if k.endswith(".pos") and k in robot.observation_features}
     _teleop_smooth_move_to(teleop, robot_pos, duration_s=2.0, fps=50)
 
-    while not events.start_next_episode and not events.stop_recording:
+    while not events.start_next_episode.is_set() and not events.stop_recording.is_set():
         precise_sleep(0.05)
 
-    if events.stop_recording:
+    if events.stop_recording.is_set():
         return
 
-    events.start_next_episode = False
+    events.start_next_episode.clear()
     _teleop_disable_torque(teleop)
     logger.info("Teleop enabled — press any key to start episode")
 
-    while not events.start_next_episode and not events.stop_recording:
+    while not events.start_next_episode.is_set() and not events.stop_recording.is_set():
         loop_start = time.perf_counter()
         obs = robot.get_observation()
         action = teleop.get_action()
@@ -224,8 +226,8 @@ def _reset_loop(
         robot.send_action(robot_action_to_send)
         precise_sleep(1 / fps - (time.perf_counter() - loop_start))
 
-    events.in_reset = False
-    events.start_next_episode = False
+    events.in_reset.clear()
+    events.start_next_episode.clear()
     events.reset_for_episode()
 
 
@@ -242,16 +244,16 @@ def _init_dagger_keyboard(events: DAggerEvents):
 
     def on_press(key):
         try:
-            if events.in_reset:
+            if events.in_reset.is_set():
                 if (
                     key in [keyboard.Key.space, keyboard.Key.right]
                     or hasattr(key, "char")
                     and key.char == "c"
                 ):
-                    events.start_next_episode = True
+                    events.start_next_episode.set()
                 elif key == keyboard.Key.esc:
-                    events.stop_recording = True
-                    events.start_next_episode = True
+                    events.stop_recording.set()
+                    events.start_next_episode.set()
                 return
 
             phase = events.phase
@@ -275,15 +277,15 @@ def _init_dagger_keyboard(events: DAggerEvents):
 
             elif key == keyboard.Key.right:
                 logger.info("End episode")
-                events.exit_early = True
+                events.exit_early.set()
             elif key == keyboard.Key.left:
                 logger.info("Re-record episode")
-                events.rerecord_episode = True
-                events.exit_early = True
+                events.rerecord_episode.set()
+                events.exit_early.set()
             elif key == keyboard.Key.esc:
                 logger.info("Stop recording...")
-                events.stop_recording = True
-                events.exit_early = True
+                events.stop_recording.set()
+                events.exit_early.set()
         except Exception as e:
             logger.debug("Key error: %s", e)
 
@@ -301,8 +303,8 @@ def _dagger_pedal_callback(events: DAggerEvents):
     def on_press(code: str) -> None:
         if code not in _DAGGER_PEDAL_KEYS:
             return
-        if events.in_reset:
-            events.start_next_episode = True
+        if events.in_reset.is_set():
+            events.start_next_episode.set()
             return
         phase = events.phase
         if phase == DAggerPhase.CORRECTING:
@@ -362,22 +364,22 @@ class DAggerStrategy(RolloutStrategy):
         with VideoEncodingManager(dataset):
             try:
                 recorded = 0
-                while recorded < self.config.num_episodes and not events.stop_recording:
+                while recorded < self.config.num_episodes and not events.stop_recording.is_set():
                     log_say(f"Episode {dataset.num_episodes}", self.config.play_sounds)
 
                     self._run_episode(ctx)
 
-                    if events.rerecord_episode:
+                    if events.rerecord_episode.is_set():
                         log_say("Re-recording", self.config.play_sounds)
-                        events.rerecord_episode = False
-                        events.exit_early = False
+                        events.rerecord_episode.clear()
+                        events.exit_early.clear()
                         dataset.clear_episode_buffer()
                         continue
 
                     dataset.save_episode()
                     recorded += 1
 
-                    if recorded < self.config.num_episodes and not events.stop_recording:
+                    if recorded < self.config.num_episodes and not events.stop_recording.is_set():
                         _reset_loop(
                             ctx.hardware.robot_wrapper,
                             teleop,
@@ -448,8 +450,8 @@ class DAggerStrategy(RolloutStrategy):
         while timestamp < self.config.episode_time_s:
             loop_start = time.perf_counter()
 
-            if events.exit_early:
-                events.exit_early = False
+            if events.exit_early.is_set():
+                events.exit_early.clear()
                 break
 
             transition = events.consume_transition()

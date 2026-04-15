@@ -51,6 +51,15 @@ from .base import InferenceStrategy
 
 logger = logging.getLogger(__name__)
 
+# How long the RTC loop sleeps when paused, idle, or backpressured by a full queue.
+_RTC_IDLE_SLEEP_S: float = 0.01
+# Backoff between transient inference errors (per consecutive failure).
+_RTC_ERROR_RETRY_DELAY_S: float = 0.5
+# Consecutive transient errors tolerated before giving up and propagating shutdown.
+_RTC_MAX_CONSECUTIVE_ERRORS: int = 10
+# Hard timeout for joining the RTC thread on stop().
+_RTC_JOIN_TIMEOUT_S: float = 3.0
+
 
 # ---------------------------------------------------------------------------
 # RTC helpers (extracted from examples/rtc and examples/hil)
@@ -208,7 +217,7 @@ class RTCInferenceStrategy(InferenceStrategy):
         self._shutdown_event.set()
         self._policy_active.clear()
         if self._rtc_thread is not None and self._rtc_thread.is_alive():
-            self._rtc_thread.join(timeout=3.0)
+            self._rtc_thread.join(timeout=_RTC_JOIN_TIMEOUT_S)
             self._rtc_thread = None
 
     def pause(self) -> None:
@@ -252,17 +261,18 @@ class RTCInferenceStrategy(InferenceStrategy):
 
             warmup_required = max(1, self._compile_warmup_inferences) if self._use_torch_compile else 0
             inference_count = 0
+            consecutive_errors = 0
 
             while not self._shutdown_event.is_set():
                 if not self._policy_active.is_set():
-                    time.sleep(0.01)
+                    time.sleep(_RTC_IDLE_SLEEP_S)
                     continue
 
                 queue = self._action_queue
                 with self._obs_lock:
                     obs = self._obs_holder.get("obs")
                 if queue is None or obs is None:
-                    time.sleep(0.01)
+                    time.sleep(_RTC_IDLE_SLEEP_S)
                     continue
 
                 if queue.qsize() <= self._rtc_queue_threshold:
@@ -310,6 +320,7 @@ class RTCInferenceStrategy(InferenceStrategy):
                         new_delay = math.ceil(new_latency / time_per_chunk)
 
                         inference_count += 1
+                        consecutive_errors = 0
                         is_warmup = self._use_torch_compile and inference_count <= warmup_required
                         if is_warmup:
                             latency_tracker.reset()
@@ -329,11 +340,20 @@ class RTCInferenceStrategy(InferenceStrategy):
                         logger.debug("RTC inference latency=%.2fs, queue=%d", new_latency, queue.qsize())
 
                     except Exception as e:
-                        logger.error("RTC inference error: %s", e)
+                        consecutive_errors += 1
+                        logger.error(
+                            "RTC inference error (%d/%d): %s",
+                            consecutive_errors,
+                            _RTC_MAX_CONSECUTIVE_ERRORS,
+                            e,
+                        )
                         logger.debug(traceback.format_exc())
-                        time.sleep(0.5)
+                        if consecutive_errors >= _RTC_MAX_CONSECUTIVE_ERRORS:
+                            # Persistent failure: stop retrying and propagate shutdown.
+                            raise
+                        time.sleep(_RTC_ERROR_RETRY_DELAY_S)
                 else:
-                    time.sleep(0.01)
+                    time.sleep(_RTC_IDLE_SLEEP_S)
 
         except Exception as e:
             logger.error("Fatal error in RTC thread: %s", e)

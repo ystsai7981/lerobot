@@ -242,18 +242,25 @@ def build_rollout_context(
     }
     action_features_hw = robot.action_features
 
-    dataset_features = combine_feature_dicts(
-        aggregate_pipeline_dataset_features(
-            pipeline=teleop_action_processor,
-            initial_features=create_initial_features(action=action_features_hw),
-            use_videos=cfg.dataset.video if cfg.dataset else True,
-        ),
-        aggregate_pipeline_dataset_features(
+    # The action side is always needed: sync inference reads action names from
+    # ``dataset_features[ACTION]`` to map policy tensors back to robot actions.
+    action_dataset_features = aggregate_pipeline_dataset_features(
+        pipeline=teleop_action_processor,
+        initial_features=create_initial_features(action=action_features_hw),
+        use_videos=cfg.dataset.video if cfg.dataset else True,
+    )
+    # Observation-side aggregation only feeds the dataset schema; skip it for
+    # the base strategy to avoid running observation pipelines that may have
+    # dataset-specific dependencies.
+    if cfg.dataset is not None:
+        observation_dataset_features = aggregate_pipeline_dataset_features(
             pipeline=robot_observation_processor,
             initial_features=create_initial_features(observation=observation_features_hw),
-            use_videos=cfg.dataset.video if cfg.dataset else True,
-        ),
-    )
+            use_videos=cfg.dataset.video,
+        )
+        dataset_features = combine_feature_dicts(action_dataset_features, observation_dataset_features)
+    else:
+        dataset_features = action_dataset_features
     hw_features = hw_to_dataset_features(observation_features_hw, "observation")
     raw_action_keys = list(robot.action_features.keys())
     policy_action_names = getattr(policy_config, "action_feature_names", None)

@@ -68,12 +68,12 @@ The `lerobot-rollout --strategy.type=dagger` mode requires **teleoperators with 
 
 ## Script
 
-Use `lerobot-rollout` with `--strategy.type=dagger` for HIL data collection. Toggle RTC with `--rtc.enabled=true`:
+Use `lerobot-rollout` with `--strategy.type=dagger` for HIL data collection. Select the inference backend with `--inference.type=sync|rtc`:
 
-| Mode                     | Flag                 | Models                |
-| ------------------------ | -------------------- | --------------------- |
-| Standard (default)       | _(no flag needed)_   | ACT, Diffusion Policy |
-| Real-Time Chunking (RTC) | `--rtc.enabled=true` | Pi0, Pi0.5, SmolVLA   |
+| Mode                     | Flag                   | Models                |
+| ------------------------ | ---------------------- | --------------------- |
+| Standard (default)       | _(no flag needed)_     | ACT, Diffusion Policy |
+| Real-Time Chunking (RTC) | `--inference.type=rtc` | Pi0, Pi0.5, SmolVLA   |
 
 ---
 
@@ -122,10 +122,10 @@ For models with high inference latency, enable RTC for smooth execution:
 
 ```bash
 lerobot-rollout --strategy.type=dagger \
-    --rtc.enabled=true \
-    --rtc.execution_horizon=20 \
-    --rtc.max_guidance_weight=5.0 \
-    --rtc.prefix_attention_schedule=LINEAR \
+    --inference.type=rtc \
+    --inference.rtc.execution_horizon=20 \
+    --inference.rtc.max_guidance_weight=5.0 \
+    --inference.rtc.prefix_attention_schedule=LINEAR \
     --robot.type=bi_openarm_follower \
     --robot.left_arm_config.port=can1 \
     --robot.left_arm_config.side=left \

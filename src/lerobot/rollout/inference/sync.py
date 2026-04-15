@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from copy import copy
 
 import torch
@@ -55,7 +56,7 @@ class SyncInferenceStrategy(InferenceStrategy):
         self._dataset_features = dataset_features
         self._ordered_action_keys = ordered_action_keys
         self._task = task
-        self._device = device or "cpu"
+        self._device = torch.device(device or "cpu")
         self._robot_type = robot_type
 
     def start(self) -> None:
@@ -72,16 +73,18 @@ class SyncInferenceStrategy(InferenceStrategy):
     def get_action(self, obs_frame: dict | None) -> torch.Tensor | None:
         if obs_frame is None:
             return None
+        # Shallow copy is intentional: the caller (`send_next_action`) builds
+        # ``obs_frame`` fresh per tick via ``build_dataset_frame``, so the
+        # tensor/array values are not shared with any other reader.
         observation = copy(obs_frame)
-        policy_device = torch.device(self._device)
-        with (
-            torch.inference_mode(),
-            torch.autocast(device_type=policy_device.type)
-            if policy_device.type == "cuda" and self._policy.config.use_amp
-            else torch.inference_mode(),
-        ):
+        autocast_ctx = (
+            torch.autocast(device_type=self._device.type)
+            if self._device.type == "cuda" and self._policy.config.use_amp
+            else nullcontext()
+        )
+        with torch.inference_mode(), autocast_ctx:
             observation = prepare_observation_for_inference(
-                observation, policy_device, self._task, self._robot_type
+                observation, self._device, self._task, self._robot_type
             )
             observation = self._preprocessor(observation)
             action = self._policy.select_action(observation)
