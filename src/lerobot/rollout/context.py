@@ -21,7 +21,6 @@ and :class:`DatasetContext` — assembled into :class:`RolloutContext`.
 
 from __future__ import annotations
 
-import datetime as _dt
 import logging
 from dataclasses import dataclass, field
 from threading import Event
@@ -48,7 +47,7 @@ from lerobot.robots import make_robot_from_config
 from lerobot.teleoperators import Teleoperator, make_teleoperator_from_config
 from lerobot.utils.feature_utils import combine_feature_dicts, hw_to_dataset_features
 
-from .configs import BaseStrategyConfig, DAggerStrategyConfig, RolloutConfig, SentryStrategyConfig
+from .configs import BaseStrategyConfig, DAggerStrategyConfig, RolloutConfig
 from .inference import (
     InferenceStrategy,
     RTCInferenceConfig,
@@ -269,14 +268,9 @@ def build_rollout_context(
         raw_action_keys,
     )
 
-    # --- 5. Dataset (Sentry gets a unique per-run suffix) -------------
+    # --- 5. Dataset -------------
     dataset = None
     if cfg.dataset is not None and not isinstance(cfg.strategy, BaseStrategyConfig):
-        if not cfg.resume and isinstance(cfg.strategy, SentryStrategyConfig) and cfg.dataset.repo_id:
-            suffix = _dt.datetime.now(_dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-            cfg.dataset.repo_id = f"{cfg.dataset.repo_id}-{suffix}"
-            logger.info("Sentry mode: using run-suffixed repo_id=%s", cfg.dataset.repo_id)
-
         if cfg.resume:
             dataset = LeRobotDataset.resume(
                 cfg.dataset.repo_id,

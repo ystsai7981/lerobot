@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import sys
 import time
 from threading import Event as ThreadingEvent
 
@@ -25,12 +27,26 @@ from lerobot.common.control_utils import is_headless
 from lerobot.datasets import VideoEncodingManager
 from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame
+from lerobot.utils.import_utils import _pynput_available, require_package
 from lerobot.utils.robot_utils import precise_sleep
 
 from ..configs import HighlightStrategyConfig
 from ..context import RolloutContext
 from ..ring_buffer import RolloutRingBuffer
 from .core import RolloutStrategy, send_next_action
+
+PYNPUT_AVAILABLE = _pynput_available
+keyboard = None
+if PYNPUT_AVAILABLE:
+    try:
+        if ("DISPLAY" not in os.environ) and ("linux" in sys.platform):
+            logging.info("No DISPLAY set. Skipping pynput import.")
+            PYNPUT_AVAILABLE = False
+        else:
+            from pynput import keyboard
+    except Exception as e:
+        PYNPUT_AVAILABLE = False
+        logging.info(f"Could not import pynput: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +70,7 @@ class HighlightStrategy(RolloutStrategy):
 
     def __init__(self, config: HighlightStrategyConfig):
         super().__init__(config)
+        require_package("pynput", extra="pynput-dep")
         self._ring: RolloutRingBuffer | None = None
         self._listener = None
         self._save_requested = ThreadingEvent()
@@ -181,8 +198,6 @@ class HighlightStrategy(RolloutStrategy):
             return
 
         try:
-            from pynput import keyboard
-
             save_key = self.config.save_key
 
             def on_press(key):

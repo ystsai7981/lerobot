@@ -182,18 +182,6 @@ class RolloutConfig:
     compile_warmup_inferences: int = 2
 
     def __post_init__(self):
-        # --- Policy loading (same pattern as existing scripts) ---
-        policy_path = parser.get_path_arg("policy")
-        if policy_path:
-            cli_overrides = parser.get_cli_overrides("policy")
-            self.policy = PreTrainedConfig.from_pretrained(policy_path, cli_overrides=cli_overrides)
-            self.policy.pretrained_path = policy_path
-        if self.policy is None:
-            raise ValueError("--policy.path is required for rollout")
-
-        if self.robot is None:
-            raise ValueError("--robot.type is required for rollout")
-
         # --- Strategy-specific validation ---
         if isinstance(self.strategy, DAggerStrategyConfig) and self.teleop is None:
             raise ValueError("DAgger strategy requires --teleop.type to be set")
@@ -236,6 +224,18 @@ class RolloutConfig:
         ):
             logger.warning("DAgger with record_autonomous=True forces streaming_encoding=True")
             self.dataset.streaming_encoding = True
+
+        # --- Policy loading (same pattern as existing scripts) ---
+        if self.robot is None:
+            raise ValueError("--robot.type is required for rollout")
+
+        policy_path = parser.get_path_arg("policy")
+        if policy_path:
+            cli_overrides = parser.get_cli_overrides("policy")
+            self.policy = PreTrainedConfig.from_pretrained(policy_path, cli_overrides=cli_overrides)
+            self.policy.pretrained_path = policy_path
+        if self.policy is None:
+            raise ValueError("--policy.path is required for rollout")
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:
