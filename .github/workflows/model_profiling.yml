@@ -80,7 +80,7 @@ jobs:
     env:
       HF_USER_TOKEN: ${{ secrets.LEROBOT_HF_USER }}
       PROFILE_MODE: ${{ github.event_name == 'pull_request' && 'summary' || github.event.inputs.profile_mode || 'trace' }}
-      POLICY_FILTER: ${{ github.event_name == 'pull_request' && 'act' || github.event.inputs.policies || '' }}
+      POLICY_FILTER: ${{ github.event_name == 'pull_request' && 'act,pi0,pi05,smolvla' || github.event.inputs.policies || '' }}
       RESULTS_REPO: ${{ github.event.inputs.results_repo || 'model-profiling-history' }}
       SHOULD_PUBLISH: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_results == 'true') }}
     steps:
