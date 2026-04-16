@@ -80,7 +80,7 @@ jobs:
     env:
       HF_USER_TOKEN: ${{ secrets.LEROBOT_HF_USER }}
       PROFILE_MODE: ${{ github.event_name == 'pull_request' && 'summary' || github.event.inputs.profile_mode || 'trace' }}
-      POLICY_FILTER: ${{ github.event_name == 'pull_request' && 'act,pi0,pi05,smolvla' || github.event.inputs.policies || '' }}
+      POLICY_FILTER: ${{ github.event_name == 'pull_request' && 'act,diffusion,pi0,pi05,smolvla,groot,xvla,wall_x' || github.event.inputs.policies || '' }}
       RESULTS_REPO: ${{ github.event.inputs.results_repo || 'model-profiling-history' }}
       SHOULD_PUBLISH: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_results == 'true') }}
     steps:
@@ -137,90 +137,77 @@ jobs:
                 hf auth login --token "${HF_USER_TOKEN}" --add-to-git-credential 2>/dev/null || true
               fi
 
-              policies_for_install=()
+              policies_to_run=()
               if [[ -n "${POLICY_FILTER}" ]]; then
-                IFS="," read -ra policies_for_install <<< "${POLICY_FILTER}"
+                IFS="," read -ra policies_to_run <<< "${POLICY_FILTER}"
               else
-                policies_for_install=(act diffusion groot multi_task_dit pi0 pi0_fast pi05 smolvla wall_x xvla)
+                policies_to_run=(act diffusion groot multi_task_dit pi0 pi0_fast pi05 smolvla wall_x xvla)
               fi
 
-              extras=(training test)
-              add_extra() {
-                local extra="$1"
-                for existing in "${extras[@]}"; do
-                  if [[ "${existing}" == "${extra}" ]]; then
-                    return
-                  fi
-                done
-                extras+=("${extra}")
-              }
-
-              for policy in "${policies_for_install[@]}"; do
-                policy="$(echo "${policy}" | xargs)"
-                case "${policy}" in
-                  act)
-                    ;;
-                  diffusion)
-                    add_extra diffusion
-                    ;;
-                  groot)
-                    add_extra groot
-                    ;;
-                  multi_task_dit)
-                    add_extra multi_task_dit
-                    ;;
-                  pi0|pi0_fast|pi05)
-                    add_extra pi
-                    ;;
-                  smolvla)
-                    add_extra smolvla
-                    ;;
-                  wall_x)
-                    add_extra wallx
-                    ;;
-                  xvla)
-                    add_extra xvla
-                    ;;
+              policy_extras() {
+                case "$1" in
+                  act) ;;
+                  diffusion) echo "diffusion" ;;
+                  groot) echo "groot" ;;
+                  multi_task_dit) echo "multi_task_dit" ;;
+                  pi0|pi0_fast|pi05) echo "pi" ;;
+                  smolvla) echo "smolvla" ;;
+                  wall_x) echo "wallx" ;;
+                  xvla) echo "xvla" ;;
                   *)
-                    echo "Unknown profiling policy ${policy}" >&2
-                    exit 1
+                    echo "Unknown profiling policy $1" >&2
+                    return 1
                     ;;
                 esac
+              }
+
+              overall_status=0
+              for raw_policy in "${policies_to_run[@]}"; do
+                policy="$(echo "${raw_policy}" | xargs)"
+                [[ -z "${policy}" ]] && continue
+
+                echo "::group::Profile ${policy}"
+
+                extra="$(policy_extras "${policy}")" || { overall_status=1; echo "::endgroup::"; continue; }
+
+                # Fresh, isolated dependency resolution per policy so that
+                # incompatible extras (e.g. flash-attn for groot) never block
+                # the rest of the matrix.
+                sync_cmd=(uv sync --locked --extra training --extra test)
+                if [[ -n "${extra}" ]]; then
+                  sync_cmd+=(--extra "${extra}")
+                fi
+                if ! "${sync_cmd[@]}"; then
+                  echo "Dependency install failed for ${policy}; skipping." >&2
+                  overall_status=1
+                  echo "::endgroup::"
+                  continue
+                fi
+
+                cmd=(
+                  uv run python scripts/ci/run_model_profiling.py
+                  --output_dir=/workspace/profiling-results
+                  --hub_org=lerobot
+                  --results_repo="${RESULTS_REPO}"
+                  --profile_mode="${PROFILE_MODE}"
+                  --git_commit="${HOST_GIT_COMMIT}"
+                  --git_ref="${PROFILE_GIT_REF}"
+                  --pr_number="${PROFILE_PR_NUMBER}"
+                  --policies "${policy}"
+                )
+                if [[ "${SHOULD_PUBLISH}" == "true" && -n "${HF_USER_TOKEN:-}" ]]; then
+                  cmd+=(--publish)
+                fi
+
+                if ! "${cmd[@]}"; then
+                  echo "Profiling failed for ${policy}." >&2
+                  overall_status=1
+                fi
+
+                echo "::endgroup::"
               done
 
-              sync_cmd=(uv sync --locked)
-              for extra in "${extras[@]}"; do
-                sync_cmd+=(--extra "${extra}")
-              done
-              "${sync_cmd[@]}"
-
-              cmd=(
-                uv run python scripts/ci/run_model_profiling.py
-                --output_dir=/workspace/profiling-results
-                --hub_org=lerobot
-                --results_repo="${RESULTS_REPO}"
-                --profile_mode="${PROFILE_MODE}"
-                --git_commit="${HOST_GIT_COMMIT}"
-                --git_ref="${PROFILE_GIT_REF}"
-                --pr_number="${PROFILE_PR_NUMBER}"
-              )
-
-              if [[ -n "${POLICY_FILTER}" ]]; then
-                IFS="," read -ra policies <<< "${POLICY_FILTER}"
-                cmd+=(--policies)
-                for policy in "${policies[@]}"; do
-                  policy="$(echo "${policy}" | xargs)"
-                  if [[ -n "${policy}" ]]; then
-                    cmd+=("${policy}")
-                  fi
-                done
-              fi
-
-              if [[ "${SHOULD_PUBLISH}" == "true" && -n "${HF_USER_TOKEN:-}" ]]; then
-                cmd+=(--publish)
-              fi
-
-              "${cmd[@]}"
+              exit "${overall_status}"
             '
 
       - name: Upload profiling artifacts
