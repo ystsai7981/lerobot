@@ -161,6 +161,18 @@ jobs:
                 esac
               }
 
+              # Policies whose dep-install may fail due to environment constraints
+              # (e.g. groot requires compiling flash-attn, which needs nvcc; the CI
+              # image only ships the CUDA runtime). Install failures for these are
+              # logged as warnings and do not fail the job. See the TODO next to
+              # `lerobot[groot]` in pyproject.toml.
+              is_install_failure_tolerated() {
+                case "$1" in
+                  groot) return 0 ;;
+                  *) return 1 ;;
+                esac
+              }
+
               overall_status=0
               for raw_policy in "${policies_to_run[@]}"; do
                 policy="$(echo "${raw_policy}" | xargs)"
@@ -183,8 +195,12 @@ jobs:
                 # build isolation for flash-attn specifically.
                 sync_cmd+=(--no-build-isolation-package flash-attn)
                 if ! "${sync_cmd[@]}"; then
-                  echo "Dependency install failed for ${policy}; skipping." >&2
-                  overall_status=1
+                  if is_install_failure_tolerated "${policy}"; then
+                    echo "::warning::Dependency install failed for ${policy} (known-fragile); skipping."
+                  else
+                    echo "Dependency install failed for ${policy}; skipping." >&2
+                    overall_status=1
+                  fi
                   echo "::endgroup::"
                   continue
                 fi
