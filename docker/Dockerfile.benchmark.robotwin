@@ -60,8 +60,11 @@ RUN cd ${ROBOTWIN_ROOT}/envs \
        uv pip install -e . --no-build-isolation --no-cache
 
 # Upstream patches (mirror RoboTwin's script/_install.sh).
-# mplib: drop a broken `or collide` clause in planner.py.
-# sapien: fix URDF loader encoding + .srdf extension check.
+# These patches target the exact versions pinned above; re-check when upgrading.
+# mplib==0.2.1: drop a broken `or collide` clause in planner.py.
+#   Safe to remove once mplib > 0.2.1 ships with the fix upstream.
+# sapien==3.0.0b1: fix URDF loader encoding + .srdf extension check.
+#   Safe to remove once sapien > 3.0.0b1 ships with the fix upstream.
 RUN python - <<'EOF'
 import pathlib, re, site
 for d in site.getsitepackages():
@@ -80,7 +83,7 @@ EOF
 
 # Simulation assets from TianxingChen/RoboTwin2.0: embodiments (~220 MB) +
 # objects (~3.74 GB). background_texture (~11 GB) is intentionally skipped.
-ARG HF_TOKEN=""
+# The dataset is public — no auth token needed.
 RUN python - <<'EOF'
 import os, pathlib, zipfile
 from huggingface_hub import hf_hub_download
@@ -92,7 +95,6 @@ for fname in ("embodiments.zip", "objects.zip"):
         repo_id="TianxingChen/RoboTwin2.0",
         repo_type="dataset",
         filename=fname,
-        token=os.environ.get("HF_TOKEN") or None,
         local_dir=str(assets_dir),
     )
     with zipfile.ZipFile(local, "r") as z:
@@ -100,9 +102,13 @@ for fname in ("embodiments.zip", "objects.zip"):
     pathlib.Path(local).unlink()
 EOF
 
-RUN cd ${ROBOTWIN_ROOT} && python script/update_embodiment_config_path.py
+WORKDIR ${ROBOTWIN_ROOT}
+RUN python script/update_embodiment_config_path.py
 
 ENV PYTHONPATH="${ROBOTWIN_ROOT}:${PYTHONPATH}"
+
+# Return to the lerobot source directory (set by base image) before overlaying.
+WORKDIR /lerobot
 
 # Overlay the PR's source code on top of the nightly image.
 COPY --chown=user_lerobot:user_lerobot . .

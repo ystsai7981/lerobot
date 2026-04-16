@@ -583,7 +583,7 @@ class RoboTwinEnvConfig(EnvConfig):
 
     RoboTwin 2.0 is a dual-arm manipulation benchmark with 60 tasks built on the
     SAPIEN simulator. The robot is an Aloha-AgileX bimanual platform with 14 DOF
-    (7 per arm). All four cameras are enabled by default.
+    (7 per arm). All three cameras are enabled by default.
 
     See: https://robotwin-platform.github.io
     Dataset: https://huggingface.co/datasets/lerobot/robotwin_unified

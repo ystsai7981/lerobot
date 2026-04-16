@@ -2,22 +2,30 @@
 
 RoboTwin 2.0 is a **large-scale dual-arm manipulation benchmark** built on the SAPIEN physics engine. It provides a standardized evaluation protocol for bimanual robotic policies across 60 tasks with strong domain randomization (clutter, lighting, background, tabletop height, and language instructions).
 
-- Paper: [RoboTwin 2.0: A Scalable Data Generator and Benchmark with Strong Domain Randomization for Robust Bimanual Robotic Manipulation](https://robotwin-platform.github.io)
+- Paper: [RoboTwin 2.0: A Scalable Data Generator and Benchmark with Strong Domain Randomization for Robust Bimanual Robotic Manipulation](https://arxiv.org/abs/2504.13495)
 - GitHub: [RoboTwin-Platform/RoboTwin](https://github.com/RoboTwin-Platform/RoboTwin)
 - Leaderboard: [robotwin-platform.github.io/leaderboard](https://robotwin-platform.github.io/leaderboard)
 - Dataset: [lerobot/robotwin_unified](https://huggingface.co/datasets/lerobot/robotwin_unified)
 
+<div style={{ textAlign: "center" }}>
+  <img
+    src="https://robotwin-platform.github.io/static/images/teaser.png"
+    alt="RoboTwin 2.0 benchmark overview showing dual-arm manipulation tasks"
+    style={{ maxWidth: "100%" }}
+  />
+</div>
+
 ## Overview
 
-| Property      | Value                                                      |
-| ------------- | ---------------------------------------------------------- |
-| Tasks         | 60 dual-arm manipulation tasks                             |
-| Robot         | Aloha-AgileX bimanual (14 DOF, 7 per arm)                  |
-| Action space  | 14-dim joint-space, continuous in `[-1, 1]`                |
-| Cameras       | `head_camera`, `front_camera`, `left_wrist`, `right_wrist` |
-| Simulator     | SAPIEN (not MuJoCo)                                        |
-| Eval protocol | 100 episodes/task, 50 demo_clean demonstrations            |
-| Eval settings | **Easy** (`demo_clean`) and **Hard** (`demo_randomized`)   |
+| Property      | Value                                                    |
+| ------------- | -------------------------------------------------------- |
+| Tasks         | 60 dual-arm manipulation tasks                           |
+| Robot         | Aloha-AgileX bimanual (14 DOF, 7 per arm)                |
+| Action space  | 14-dim joint-space, continuous in `[-1, 1]`              |
+| Cameras       | `head_camera`, `left_camera`, `right_camera`             |
+| Simulator     | SAPIEN (not MuJoCo)                                      |
+| Eval protocol | 100 episodes/task, 50 demo_clean demonstrations          |
+| Eval settings | **Easy** (`demo_clean`) and **Hard** (`demo_randomized`) |
 
 ## Available tasks
 
@@ -160,14 +168,13 @@ lerobot-eval \
 
 ## Camera configuration
 
-By default, all four cameras are included:
+By default, all three cameras are included:
 
 | Camera key     | Description                    |
 | -------------- | ------------------------------ |
-| `head_camera`  | Overhead / third-person view   |
-| `front_camera` | Front-facing static camera     |
-| `left_wrist`   | Left arm wrist-mounted camera  |
-| `right_wrist`  | Right arm wrist-mounted camera |
+| `head_camera`  | Torso-mounted overhead view    |
+| `left_camera`  | Left arm wrist-mounted camera  |
+| `right_camera` | Right arm wrist-mounted camera |
 
 To use a subset of cameras, override `--env.camera_names`:
 
@@ -176,7 +183,7 @@ lerobot-eval \
   --policy.path="your-hf-policy-id" \
   --env.type=robotwin \
   --env.task=beat_block_hammer \
-  --env.camera_names="head_camera,left_wrist,right_wrist" \
+  --env.camera_names="head_camera,left_camera" \
   --eval.batch_size=1 \
   --eval.n_episodes=10
 ```
@@ -185,15 +192,15 @@ lerobot-eval \
 
 Key parameters for `RoboTwinEnvConfig`:
 
-| Parameter            | Default                                             | Description                        |
-| -------------------- | --------------------------------------------------- | ---------------------------------- |
-| `task`               | `"beat_block_hammer"`                               | Comma-separated task name(s)       |
-| `fps`                | `25`                                                | Simulation FPS                     |
-| `episode_length`     | `300`                                               | Max steps per episode              |
-| `obs_type`           | `"pixels_agent_pos"`                                | `"pixels"` or `"pixels_agent_pos"` |
-| `camera_names`       | `"head_camera,front_camera,left_wrist,right_wrist"` | Comma-separated active cameras     |
-| `observation_height` | `480`                                               | Camera pixel height                |
-| `observation_width`  | `640`                                               | Camera pixel width                 |
+| Parameter            | Default                                  | Description                        |
+| -------------------- | ---------------------------------------- | ---------------------------------- |
+| `task`               | `"beat_block_hammer"`                    | Comma-separated task name(s)       |
+| `fps`                | `25`                                     | Simulation FPS                     |
+| `episode_length`     | `300`                                    | Max steps per episode              |
+| `obs_type`           | `"pixels_agent_pos"`                     | `"pixels"` or `"pixels_agent_pos"` |
+| `camera_names`       | `"head_camera,left_camera,right_camera"` | Comma-separated active cameras     |
+| `observation_height` | `240`                                    | Camera pixel height                |
+| `observation_width`  | `320`                                    | Camera pixel width                 |
 
 ## Leaderboard submission
 
