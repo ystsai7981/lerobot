@@ -173,7 +173,7 @@ def update_policy(
             forward_s=forward_s,
             backward_s=backward_s,
             optimizer_s=optimizer_s,
-            total_update_s=train_metrics.update_s,
+            total_update_s=train_metrics.update_s.val,
         )
     return train_metrics, output_dict
 

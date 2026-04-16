@@ -22,6 +22,7 @@ import io
 import json
 import pstats
 import statistics
+from numbers import Real
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -244,6 +245,14 @@ def _summary(values: list[float]) -> dict[str, float] | dict[str, None]:
     }
 
 
+def _as_float(value: Any) -> float:
+    if isinstance(value, Real):
+        return float(value)
+    if hasattr(value, "val"):
+        return float(value.val)
+    raise TypeError(f"Expected a real-valued metric, got {type(value).__name__}")
+
+
 @dataclass
 class StepTimingCollector:
     forward_s: list[float] = field(default_factory=list)
@@ -261,13 +270,13 @@ class StepTimingCollector:
         optimizer_s: float,
         total_update_s: float,
     ) -> None:
-        self.forward_s.append(forward_s)
-        self.backward_s.append(backward_s)
-        self.optimizer_s.append(optimizer_s)
-        self.total_update_s.append(total_update_s)
+        self.forward_s.append(_as_float(forward_s))
+        self.backward_s.append(_as_float(backward_s))
+        self.optimizer_s.append(_as_float(optimizer_s))
+        self.total_update_s.append(_as_float(total_update_s))
 
     def record_dataloading(self, dataloading_s: float) -> None:
-        self.dataloading_s.append(dataloading_s)
+        self.dataloading_s.append(_as_float(dataloading_s))
 
     def record_memory(self, *, step: int, allocated_bytes: int, reserved_bytes: int) -> None:
         self.memory_timeline.append(
