@@ -114,6 +114,8 @@ jobs:
             -e XDG_DATA_HOME=/tmp/xdg-data \
             -e XDG_CACHE_HOME=/tmp/xdg-cache \
             -e HOST_GIT_COMMIT="${HOST_GIT_COMMIT}" \
+            -e GIT_REF="${GIT_REF}" \
+            -e PR_NUMBER="${PR_NUMBER}" \
             -e HF_USER_TOKEN="${HF_USER_TOKEN}" \
             -e HF_TOKEN="${HF_USER_TOKEN}" \
             -e PROFILE_MODE="${PROFILE_MODE}" \
