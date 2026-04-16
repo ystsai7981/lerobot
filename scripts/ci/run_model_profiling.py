@@ -160,7 +160,6 @@ def build_train_command(spec: ProfilingSpec, run_dir: Path, profile_mode: str) -
         "--policy.push_to_hub=false",
         "--num_workers=0",
         "--log_freq=1",
-        "--cudnn_deterministic=true",
         f"--profile_mode={profile_mode}",
         f"--profile_output_dir={profile_output_dir}",
     ]

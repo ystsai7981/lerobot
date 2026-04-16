@@ -103,7 +103,6 @@ def test_build_train_command_includes_profiling_outputs(tmp_path):
     assert any(arg.startswith("--profile_output_dir=") for arg in cmd)
     assert "--profile_mode=trace" in cmd
     assert "--eval_freq=0" in cmd
-    assert "--cudnn_deterministic=true" in cmd
 
 
 def test_build_artifact_index_collects_tables_and_traces(tmp_path):
