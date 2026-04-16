@@ -57,7 +57,7 @@
       "--policy.device=cuda",
       "--policy.n_action_steps=30",
       "--batch_size=1",
-      "--rename_map={\"observation.images.image\": \"observation.images.camera1\", \"observation.images.image2\": \"observation.images.camera2\"}"
+      "--rename_map={\"observation.images.front\": \"observation.images.base_0_rgb\", \"observation.images.wrist\": \"observation.images.left_wrist_0_rgb\"}"
     ]
   },
   "pi0_fast": {
@@ -69,7 +69,7 @@
       "--policy.device=cuda",
       "--policy.n_action_steps=30",
       "--batch_size=1",
-      "--rename_map={\"observation.images.image\": \"observation.images.camera1\", \"observation.images.image2\": \"observation.images.camera2\"}"
+      "--rename_map={\"observation.images.front\": \"observation.images.base_0_rgb\", \"observation.images.wrist\": \"observation.images.left_wrist_0_rgb\"}"
     ]
   },
   "pi05": {
@@ -81,7 +81,8 @@
       "--policy.device=cuda",
       "--policy.n_action_steps=30",
       "--batch_size=1",
-      "--rename_map={\"observation.images.image\": \"observation.images.camera1\", \"observation.images.image2\": \"observation.images.camera2\"}"
+      "--policy.normalization_mapping={\"ACTION\": \"MEAN_STD\", \"STATE\": \"MEAN_STD\", \"VISUAL\": \"IDENTITY\"}",
+      "--rename_map={\"observation.images.front\": \"observation.images.base_0_rgb\", \"observation.images.wrist\": \"observation.images.left_wrist_0_rgb\"}"
     ]
   },
   "smolvla": {
@@ -96,7 +97,7 @@
       "--policy.empty_cameras=1",
       "--policy.device=cuda",
       "--batch_size=1",
-      "--rename_map={\"observation.images.image\": \"observation.images.camera1\", \"observation.images.image2\": \"observation.images.camera2\"}"
+      "--rename_map={\"observation.images.front\": \"observation.images.camera1\", \"observation.images.wrist\": \"observation.images.camera2\"}"
     ]
   },
   "wall_x": {
