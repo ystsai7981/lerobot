@@ -177,6 +177,11 @@ jobs:
                 if [[ -n "${extra}" ]]; then
                   sync_cmd+=(--extra "${extra}")
                 fi
+                # flash-attn does not declare torch as a build-time dep, so its
+                # isolated build env fails with ModuleNotFoundError. Torch is a
+                # core lerobot dep and is already resolved here, so we disable
+                # build isolation for flash-attn specifically.
+                sync_cmd+=(--no-build-isolation-package flash-attn)
                 if ! "${sync_cmd[@]}"; then
                   echo "Dependency install failed for ${policy}; skipping." >&2
                   overall_status=1
