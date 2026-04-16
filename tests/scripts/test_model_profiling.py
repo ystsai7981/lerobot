@@ -110,6 +110,43 @@ def test_build_artifact_index_collects_cprofile_tables_and_traces(tmp_path):
     assert len(targets) == 7
 
 
+def test_upload_targets_batches_preview_publish_into_single_hf_pr(monkeypatch, tmp_path):
+    module = _import_model_profiling_script()
+    local_path = tmp_path / "profiling_row.json"
+    local_path.write_text("{}")
+    captured: dict[str, object] = {}
+
+    class _FakeCommit:
+        pr_url = "https://huggingface.co/datasets/lerobot/model-profiling-history/discussions/42"
+
+    class _FakeApi:
+        def __init__(self, token=None):
+            captured["token"] = token
+
+        def create_commit(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeCommit()
+
+    monkeypatch.setattr(module, "HfApi", _FakeApi)
+
+    result = module.upload_targets(
+        repo_id="lerobot/model-profiling-history",
+        targets=[module.UploadTarget(local_path=local_path, path_in_repo="rows/act/run.json")],
+        create_pr=True,
+        token="hf_test_token",
+    )
+
+    assert captured["repo_id"] == "lerobot/model-profiling-history"
+    assert captured["repo_type"] == "dataset"
+    assert captured["revision"] == "main"
+    assert captured["create_pr"] is True
+    operations = captured["operations"]
+    assert len(operations) == 1
+    assert operations[0].path_in_repo == "rows/act/run.json"
+    assert result.pr_url == _FakeCommit.pr_url
+    assert result.uploaded_paths["rows/act/run.json"].endswith("/resolve/refs/pr/42/rows/act/run.json")
+
+
 def test_model_profiling_main_smoke_writes_row(monkeypatch, tmp_path):
     module = _import_model_profiling_script()
 
@@ -190,6 +227,20 @@ def test_model_profiling_main_smoke_writes_row(monkeypatch, tmp_path):
     assert row["step_timing_summary"]["forward_s"]["mean"] == 0.1
     assert row["deterministic_forward"]["operator_fingerprint"] == "ops-fingerprint"
     assert "policy_setup" in row["artifact_paths"]["cprofile_summaries"]
+
+
+def test_parse_discussion_num_handles_hf_discussion_urls():
+    module = _import_model_profiling_script()
+
+    assert (
+        module.parse_discussion_num(
+            "https://huggingface.co/datasets/lerobot/model-profiling-history/discussions/42"
+        )
+        == 42
+    )
+    assert (
+        module.parse_discussion_num("https://huggingface.co/datasets/lerobot/model-profiling-history") is None
+    )
 
 
 def test_deterministic_forward_artifacts_preserve_policy_mode(tmp_path):
