@@ -22,7 +22,6 @@ import dataclasses
 import logging
 import time
 from contextlib import nullcontext
-from pathlib import Path
 from pprint import pformat
 from typing import TYPE_CHECKING, Any
 
@@ -50,13 +49,7 @@ from lerobot.optim.factory import make_optimizer_and_scheduler
 from lerobot.policies import PreTrainedPolicy, make_policy, make_pre_post_processors
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.logging_utils import AverageMeter, MetricsTracker
-from lerobot.utils.profiling_utils import (
-    StepTimingCollector,
-    ensure_dir,
-    make_torch_profiler,
-    write_deterministic_forward_artifacts,
-    write_torch_profiler_outputs,
-)
+from lerobot.utils.profiling_utils import TrainingProfiler
 from lerobot.utils.random_utils import set_seed
 from lerobot.utils.utils import (
     cycle,
@@ -79,7 +72,6 @@ def update_policy(
     lr_scheduler=None,
     lock=None,
     rabc_weights_provider=None,
-    timing_collector: StepTimingCollector | None = None,
 ) -> tuple[MetricsTracker, dict]:
     """
     Performs a single training step to update the policy's weights.
@@ -113,7 +105,6 @@ def update_policy(
         rabc_batch_weights, rabc_batch_stats = rabc_weights_provider.compute_batch_weights(batch)
 
     # Let accelerator handle mixed precision
-    forward_start = time.perf_counter()
     with accelerator.autocast():
         # Use per-sample loss when RA-BC is enabled for proper weighting
         if rabc_batch_weights is not None:
@@ -132,15 +123,11 @@ def update_policy(
             loss, output_dict = policy.forward(batch)
 
         # TODO(rcadene): policy.unnormalize_outputs(out_dict)
-    forward_s = time.perf_counter() - forward_start
 
     # Use accelerator's backward method
-    backward_start = time.perf_counter()
     accelerator.backward(loss)
-    backward_s = time.perf_counter() - backward_start
 
     # Clip gradients if specified
-    optimizer_start = time.perf_counter()
     if grad_clip_norm > 0:
         grad_norm = accelerator.clip_grad_norm_(policy.parameters(), grad_clip_norm)
     else:
@@ -161,19 +148,11 @@ def update_policy(
     # Update internal buffers if policy has update method
     if has_method(accelerator.unwrap_model(policy, keep_fp32_wrapper=True), "update"):
         accelerator.unwrap_model(policy, keep_fp32_wrapper=True).update()
-    optimizer_s = time.perf_counter() - optimizer_start
 
     train_metrics.loss = loss.item()
     train_metrics.grad_norm = grad_norm.item()
     train_metrics.lr = optimizer.param_groups[0]["lr"]
     train_metrics.update_s = time.perf_counter() - start_time
-    if timing_collector is not None:
-        timing_collector.record(
-            forward_s=forward_s,
-            backward_s=backward_s,
-            optimizer_s=optimizer_s,
-            total_update_s=train_metrics.update_s.val,
-        )
     return train_metrics, output_dict
 
 
@@ -227,12 +206,6 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
     # Only log on main process
     if is_main_process:
         logging.info(pformat(cfg.to_dict()))
-
-    profiling_enabled = cfg.profile_mode != "off"
-    profile_output_dir = None
-    if profiling_enabled and is_main_process and cfg.profile_output_dir is not None:
-        profile_output_dir = ensure_dir(Path(cfg.profile_output_dir))
-        logging.info("Profiling enabled. Artifacts will be written to %s", profile_output_dir)
 
     # Initialize wandb only on main process
     if cfg.wandb.enable and cfg.wandb.project and is_main_process:
@@ -344,15 +317,12 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
         logging.info("Creating optimizer and scheduler")
     optimizer, lr_scheduler = make_optimizer_and_scheduler(cfg, policy)
 
-    if profiling_enabled and is_main_process and profile_output_dir is not None:
-        logging.info("Recording deterministic forward-pass artifacts")
-        write_deterministic_forward_artifacts(
-            policy=policy,
-            dataset=dataset,
-            batch_size=cfg.batch_size,
-            preprocessor=preprocessor,
-            output_dir=profile_output_dir,
-            device_type=device.type,
+    profiler = (
+        TrainingProfiler.from_cfg(cfg, device) if cfg.profile_mode != "off" and is_main_process else None
+    )
+    if profiler:
+        profiler.record_deterministic_forward(
+            policy=policy, dataset=dataset, batch_size=cfg.batch_size, preprocessor=preprocessor
         )
 
     # Load precomputed SARM progress for RA-BC if enabled
@@ -468,16 +438,7 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
         logging.info(
             f"Start offline training on a fixed dataset, with effective batch size: {effective_batch_size}"
         )
-    timing_collector = StepTimingCollector() if profiling_enabled and is_main_process else None
-    profiler = None
-    profiler_context = nullcontext()
-    if profiling_enabled and is_main_process and profile_output_dir is not None:
-        if device.type == "cuda":
-            torch.cuda.reset_peak_memory_stats(device)
-        profiler = make_torch_profiler(cfg, profile_output_dir, device.type)
-        profiler_context = profiler
-
-    with profiler_context:
+    with profiler or nullcontext():
         for _ in range(step, cfg.steps):
             start_time = time.perf_counter()
             batch = next(dl_iter)
@@ -493,7 +454,6 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
                 accelerator=accelerator,
                 lr_scheduler=lr_scheduler,
                 rabc_weights_provider=rabc_weights,
-                timing_collector=timing_collector,
             )
 
             # Note: eval and checkpoint happens *after* the `step`th training update has completed, so we
@@ -501,17 +461,9 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
             step += 1
             if is_main_process:
                 progbar.update(1)
-                if timing_collector is not None:
-                    timing_collector.record_dataloading(train_tracker.dataloading_s.val)
-                    if device.type == "cuda":
-                        timing_collector.record_memory(
-                            step=step,
-                            allocated_bytes=torch.cuda.memory_allocated(device),
-                            reserved_bytes=torch.cuda.memory_reserved(device),
-                        )
+            if profiler:
+                profiler.step(step, train_tracker)
             train_tracker.step()
-            if profiler is not None:
-                profiler.step()
             is_log_step = cfg.log_freq > 0 and step % cfg.log_freq == 0 and is_main_process
             is_saving_step = step % cfg.save_freq == 0 or step == cfg.steps
             is_eval_step = cfg.eval_freq > 0 and step % cfg.eval_freq == 0
@@ -606,21 +558,8 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
 
     if is_main_process:
         progbar.close()
-        if timing_collector is not None and profile_output_dir is not None:
-            extra_profile_metrics = {
-                "profile_mode": cfg.profile_mode,
-                "peak_memory_allocated_bytes": (
-                    torch.cuda.max_memory_allocated(device) if device.type == "cuda" else None
-                ),
-                "peak_memory_reserved_bytes": (
-                    torch.cuda.max_memory_reserved(device) if device.type == "cuda" else None
-                ),
-            }
-            timing_collector.write_json(
-                profile_output_dir / "step_timing_summary.json", extra=extra_profile_metrics
-            )
-        if profiler is not None and profile_output_dir is not None:
-            write_torch_profiler_outputs(profiler, profile_output_dir, device_type=device.type)
+        if profiler:
+            profiler.finalize()
 
     if eval_env:
         close_envs(eval_env)

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import statistics
 from dataclasses import dataclass, field
 from numbers import Real
@@ -47,7 +48,20 @@ def write_profiler_table(
     output_path.write_text(table)
 
 
-def make_torch_profiler(cfg: Any, output_dir: Path, device_type: str) -> Any:
+def _make_torch_profiler(
+    *,
+    mode: str,
+    output_dir: Path,
+    device_type: str,
+    wait_steps: int = 1,
+    warmup_steps: int = 2,
+    active_steps: int = 6,
+    repeat: int = 1,
+    record_shapes: bool = True,
+    with_memory: bool = True,
+    with_flops: bool = True,
+    with_stack: bool = False,
+) -> Any:
     activities = [torch.profiler.ProfilerActivity.CPU]
     if device_type == "cuda":
         activities.append(torch.profiler.ProfilerActivity.CUDA)
@@ -55,23 +69,23 @@ def make_torch_profiler(cfg: Any, output_dir: Path, device_type: str) -> Any:
     trace_dir = ensure_dir(output_dir / "torch_traces")
 
     def _trace_ready(profiler: Any) -> None:
-        if cfg.profile_mode != "trace":
+        if mode != "trace":
             return
         profiler.export_chrome_trace(str(trace_dir / f"trace_step_{profiler.step_num}.json"))
 
     return torch.profiler.profile(
         activities=activities,
         schedule=torch.profiler.schedule(
-            wait=cfg.profile_wait_steps,
-            warmup=cfg.profile_warmup_steps,
-            active=cfg.profile_active_steps,
-            repeat=cfg.profile_repeat,
+            wait=wait_steps,
+            warmup=warmup_steps,
+            active=active_steps,
+            repeat=repeat,
         ),
         on_trace_ready=_trace_ready,
-        record_shapes=cfg.profile_record_shapes,
-        profile_memory=cfg.profile_with_memory,
-        with_flops=cfg.profile_with_flops,
-        with_stack=cfg.profile_with_stack,
+        record_shapes=record_shapes,
+        profile_memory=with_memory,
+        with_flops=with_flops,
+        with_stack=with_stack,
     )
 
 
@@ -228,25 +242,12 @@ def _as_float(value: Any) -> float:
 
 
 @dataclass
-class StepTimingCollector:
-    forward_s: list[float] = field(default_factory=list)
-    backward_s: list[float] = field(default_factory=list)
-    optimizer_s: list[float] = field(default_factory=list)
+class _StepTimingCollector:
     total_update_s: list[float] = field(default_factory=list)
     dataloading_s: list[float] = field(default_factory=list)
     memory_timeline: list[dict[str, float | int]] = field(default_factory=list)
 
-    def record(
-        self,
-        *,
-        forward_s: float,
-        backward_s: float,
-        optimizer_s: float,
-        total_update_s: float,
-    ) -> None:
-        self.forward_s.append(_as_float(forward_s))
-        self.backward_s.append(_as_float(backward_s))
-        self.optimizer_s.append(_as_float(optimizer_s))
+    def record_step(self, total_update_s: float) -> None:
         self.total_update_s.append(_as_float(total_update_s))
 
     def record_dataloading(self, dataloading_s: float) -> None:
@@ -263,9 +264,6 @@ class StepTimingCollector:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "forward_s": _summary(self.forward_s),
-            "backward_s": _summary(self.backward_s),
-            "optimizer_s": _summary(self.optimizer_s),
             "total_update_s": _summary(self.total_update_s),
             "dataloading_s": _summary(self.dataloading_s),
             "memory_timeline": self.memory_timeline,
@@ -277,3 +275,99 @@ class StepTimingCollector:
             payload.update(extra)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+
+class TrainingProfiler:
+    """Self-contained profiling orchestrator for the training loop.
+
+    Encapsulates torch profiler setup, step-level timing collection, deterministic
+    forward-pass artifact recording, and all output writing. The training script
+    interacts with it through a thin interface (~7 lines).
+    """
+
+    def __init__(
+        self,
+        mode: str,
+        output_dir: Path,
+        device: torch.device,
+        *,
+        wait_steps: int = 1,
+        warmup_steps: int = 2,
+        active_steps: int = 6,
+        repeat: int = 1,
+        record_shapes: bool = True,
+        with_memory: bool = True,
+        with_flops: bool = True,
+        with_stack: bool = False,
+    ) -> None:
+        self._mode = mode
+        self._output_dir = ensure_dir(output_dir)
+        self._device = device
+        self._timing = _StepTimingCollector()
+        self._torch_profiler = _make_torch_profiler(
+            mode=mode,
+            output_dir=output_dir,
+            device_type=device.type,
+            wait_steps=wait_steps,
+            warmup_steps=warmup_steps,
+            active_steps=active_steps,
+            repeat=repeat,
+            record_shapes=record_shapes,
+            with_memory=with_memory,
+            with_flops=with_flops,
+            with_stack=with_stack,
+        )
+        logging.info("Profiling enabled. Artifacts will be written to %s", output_dir)
+
+    @classmethod
+    def from_cfg(cls, cfg: Any, device: torch.device) -> TrainingProfiler:
+        output_dir = cfg.profile_output_dir
+        if output_dir is None:
+            output_dir = Path(cfg.output_dir) / "profiling"
+        return cls(mode=cfg.profile_mode, output_dir=Path(output_dir), device=device)
+
+    def record_deterministic_forward(
+        self,
+        *,
+        policy: Any,
+        dataset: Any,
+        batch_size: int,
+        preprocessor: Any,
+    ) -> None:
+        logging.info("Recording deterministic forward-pass artifacts")
+        write_deterministic_forward_artifacts(
+            policy=policy,
+            dataset=dataset,
+            batch_size=batch_size,
+            preprocessor=preprocessor,
+            output_dir=self._output_dir,
+            device_type=self._device.type,
+        )
+
+    def __enter__(self) -> TrainingProfiler:
+        if self._device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(self._device)
+        self._torch_profiler.__enter__()
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        return self._torch_profiler.__exit__(*exc)
+
+    def step(self, step_num: int, train_tracker: Any) -> None:
+        self._timing.record_step(_as_float(train_tracker.update_s))
+        self._timing.record_dataloading(_as_float(train_tracker.dataloading_s))
+        if self._device.type == "cuda":
+            self._timing.record_memory(
+                step=step_num,
+                allocated_bytes=torch.cuda.memory_allocated(self._device),
+                reserved_bytes=torch.cuda.memory_reserved(self._device),
+            )
+        self._torch_profiler.step()
+
+    def finalize(self) -> None:
+        extra: dict[str, Any] = {"profile_mode": self._mode}
+        if self._device.type == "cuda":
+            extra["peak_memory_allocated_bytes"] = torch.cuda.max_memory_allocated(self._device)
+            extra["peak_memory_reserved_bytes"] = torch.cuda.max_memory_reserved(self._device)
+        self._timing.write_json(self._output_dir / "step_timing_summary.json", extra=extra)
+        write_torch_profiler_outputs(self._torch_profiler, self._output_dir, device_type=self._device.type)
