@@ -242,3 +242,12 @@ def test_step_timing_collector_accepts_metric_like_values(tmp_path):
     payload = json.loads((tmp_path / "step_timing_summary.json").read_text())
     assert payload["total_update_s"]["mean"] == 0.6
     assert payload["dataloading_s"]["mean"] == 0.05
+
+
+def test_profiler_device_time_uses_generic_attr_first():
+    from lerobot.utils.profiling_utils import _get_profiler_device_time_us
+
+    class _Event:
+        self_device_time_total = 12.3456
+
+    assert _get_profiler_device_time_us(_Event()) == 12.3456

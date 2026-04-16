@@ -172,6 +172,12 @@ def _hash_payload(payload: Any) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+def _get_profiler_device_time_us(event: Any) -> float | None:
+    return _stable_float(
+        getattr(event, "self_device_time_total", getattr(event, "self_cuda_time_total", None))
+    )
+
+
 def _build_reference_batch(dataset: Any, batch_size: int) -> Any:
     if len(dataset) == 0:
         raise ValueError("Cannot build a reference batch from an empty dataset.")
@@ -212,7 +218,7 @@ def write_deterministic_forward_artifacts(
             "cpu_time_total_us": _stable_float(getattr(event, "cpu_time_total", None)),
         }
         if device_type == "cuda":
-            entry["self_cuda_time_total_us"] = _stable_float(getattr(event, "self_cuda_time_total", None))
+            entry["self_cuda_time_total_us"] = _get_profiler_device_time_us(event)
         operator_entries.append(entry)
     operator_entries = sorted(operator_entries, key=lambda item: item["key"])
 
