@@ -193,16 +193,15 @@ def write_deterministic_forward_artifacts(
     if device_type == "cuda":
         activities.append(torch.profiler.ProfilerActivity.CUDA)
 
-    was_training = policy.training
-    policy.eval()
+    # Keep the caller-selected module mode so the fingerprint matches the actual
+    # train-path forward used by the policy. Some policies, such as ACT with VAE,
+    # only materialize their full forward outputs while in training mode.
     with torch.random.fork_rng(devices=[] if device_type != "cuda" else None):
         torch.manual_seed(0)
         if device_type == "cuda":
             torch.cuda.manual_seed_all(0)
         with torch.no_grad(), torch.profiler.profile(activities=activities) as profiler:
             loss, output_dict = policy.forward(reference_batch)
-    if was_training:
-        policy.train()
 
     operator_entries = []
     for event in profiler.key_averages():
