@@ -400,12 +400,12 @@ def test_training_profiler_section_records_duration(tmp_path):
         output_dir=tmp_path,
         device=torch.device("cpu"),
     )
-    with profiler:
-        with profiler.section("forward"):
-            pass
-        with profiler.section("backward"):
-            pass
-        profiler.step(1, argparse.Namespace(update_s=0.5, dataloading_s=0.01))
+    profiler.start()
+    with profiler.section("forward"):
+        pass
+    with profiler.section("backward"):
+        pass
+    profiler.step(1, argparse.Namespace(update_s=0.5, dataloading_s=0.01))
     profiler.finalize()
 
     payload = json.loads((tmp_path / "step_timing_summary.json").read_text())

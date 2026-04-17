@@ -356,14 +356,10 @@ class TrainingProfiler:
         if self._device.type == "cuda":
             torch.cuda.empty_cache()
 
-    def __enter__(self) -> TrainingProfiler:
+    def start(self) -> None:
         if self._device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(self._device)
         self._torch_profiler.__enter__()
-        return self
-
-    def __exit__(self, *exc: Any) -> bool:
-        return self._torch_profiler.__exit__(*exc)
 
     @contextmanager
     def section(self, name: str) -> Iterator[None]:
@@ -394,6 +390,7 @@ class TrainingProfiler:
         self._torch_profiler.step()
 
     def finalize(self) -> None:
+        self._torch_profiler.__exit__(None, None, None)
         extra: dict[str, Any] = {"profile_mode": self._mode}
         if self._device.type == "cuda":
             extra["peak_memory_allocated_bytes"] = torch.cuda.max_memory_allocated(self._device)
