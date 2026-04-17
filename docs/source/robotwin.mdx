@@ -1,6 +1,6 @@
 # RoboTwin 2.0
 
-RoboTwin 2.0 is a **large-scale dual-arm manipulation benchmark** built on the SAPIEN physics engine. It provides a standardized evaluation protocol for bimanual robotic policies across 60 tasks with strong domain randomization (clutter, lighting, background, tabletop height, and language instructions).
+RoboTwin 2.0 is a **large-scale dual-arm manipulation benchmark** built on the SAPIEN physics engine. It provides a standardized evaluation protocol for bimanual robotic policies across 50 tasks (as of upstream `main`) with strong domain randomization (clutter, lighting, background, tabletop height, and language instructions).
 
 - Paper: [RoboTwin 2.0: A Scalable Data Generator and Benchmark with Strong Domain Randomization for Robust Bimanual Robotic Manipulation](https://arxiv.org/abs/2506.18088)
 - GitHub: [RoboTwin-Platform/RoboTwin](https://github.com/RoboTwin-Platform/RoboTwin)
@@ -13,7 +13,7 @@ RoboTwin 2.0 is a **large-scale dual-arm manipulation benchmark** built on the S
 
 | Property      | Value                                                    |
 | ------------- | -------------------------------------------------------- |
-| Tasks         | 60 dual-arm manipulation tasks                           |
+| Tasks         | 50 dual-arm manipulation tasks                           |
 | Robot         | Aloha-AgileX bimanual (14 DOF, 7 per arm)                |
 | Action space  | 14-dim joint-space, continuous in `[-1, 1]`              |
 | Cameras       | `head_camera`, `left_camera`, `right_camera`             |
@@ -23,20 +23,30 @@ RoboTwin 2.0 is a **large-scale dual-arm manipulation benchmark** built on the S
 
 ## Available tasks
 
-RoboTwin 2.0 ships with 60 dual-arm manipulation tasks. The full list appears on the [leaderboard](https://robotwin-platform.github.io/leaderboard). Example tasks:
+RoboTwin 2.0 ships 50 dual-arm manipulation tasks in its upstream `envs/` directory. The canonical list is the `ROBOTWIN_TASKS` tuple in `src/lerobot/envs/robotwin.py`, mirrored verbatim from the upstream repo. Example tasks:
 
-| Task                   | CLI name                 | Category         |
-| ---------------------- | ------------------------ | ---------------- |
-| Beat block with hammer | `beat_block_hammer`      | Tool use         |
-| Open / close laptop    | `open_laptop`            | Articulated obj  |
-| Stack blocks (2 / 3)   | `stack_blocks_two/three` | Stacking         |
-| Pour water             | `pour_water`             | Deformable/fluid |
-| Fold cloth             | `fold_cloth`             | Deformable       |
-| Handover block         | `handover_block`         | Bimanual coord.  |
-| Place shoes            | `place_shoes_left/right` | Precision place  |
-| Scan object            | `scan_object`            | Mobile manip.    |
+| Task                     | CLI name                 | Category          |
+| ------------------------ | ------------------------ | ----------------- |
+| Beat block with hammer   | `beat_block_hammer`      | Tool use          |
+| Click bell / alarm clock | `click_bell`             | Precision press   |
+| Stack blocks (2 / 3)     | `stack_blocks_two/three` | Stacking          |
+| Stack bowls (2 / 3)      | `stack_bowls_two/three`  | Stacking          |
+| Handover block / mic     | `handover_block`         | Bimanual coord.   |
+| Lift pot                 | `lift_pot`               | Bimanual lift     |
+| Shake bottle             | `shake_bottle`           | Continuous motion |
+| Turn switch              | `turn_switch`            | Articulated obj   |
+| Stamp seal               | `stamp_seal`             | Precision place   |
+| Scan object              | `scan_object`            | Mobile manip.     |
 
 Pass a comma-separated list to `--env.task` to run multiple tasks in a single eval sweep.
+
+<Tip warning={true}>
+  `open_laptop` is currently broken upstream (its `check_success()` uses
+  `self.arm_tag`, which is only set inside the scripted-expert `play_once()`
+  path and therefore unavailable during normal policy eval). Avoid it until the
+  upstream bug is fixed, or patch the task to default `self.arm_tag = "left"` in
+  `load_actors()`.
+</Tip>
 
 ## Dataset
 
@@ -46,7 +56,7 @@ The RoboTwin 2.0 dataset is available in **LeRobot v3.0 format** on the Hugging 
 lerobot/robotwin_unified
 ```
 
-It contains over 100,000 pre-collected trajectories across all 60 tasks (79.6 GB, Apache 2.0 license). No format conversion is needed — it is already in the correct LeRobot v3.0 schema with video observations and action labels.
+It contains over 100,000 pre-collected trajectories across all 50 tasks (79.6 GB, Apache 2.0 license). No format conversion is needed — it is already in the correct LeRobot v3.0 schema with video observations and action labels.
 
 You can load it directly with the HF Datasets library:
 
@@ -149,16 +159,22 @@ lerobot-eval \
   --eval.n_episodes=100
 ```
 
-### Full benchmark (all 60 tasks)
+### Full benchmark (all 50 tasks)
 
 ```bash
 lerobot-eval \
   --policy.path="your-hf-policy-id" \
   --env.type=robotwin \
-  --env.task=adjust_bottle,beat_block_hammer,blocks_ranking_rgb,blocks_ranking_size,click_alarmclock,click_bell,close_laptop,close_microwave,dump_bin,grab_roller,handover_block,handover_cup,handover_diverse_bottles,handover_mic,hanging_mug,insert_pin,lift_pot,make_tea,open_laptop,open_microwave,pick_diverse_bottles,pick_dual_bottles,place_basket,place_block,place_cable,place_can,place_chopsticks,place_cloth,place_container,place_cup,place_diverse_bottles,place_dual_bottles,place_fork,place_knife,place_object_basket,place_ring,place_ruler,place_shoes_left,place_shoes_right,place_spoon,place_toy,pour_water,press_stapler,put_bottles_dustbin,put_object_cabinet,put_shoes_box,rotate_qrcode,scan_object,shake_bottle,shake_bottle_horizontally,stack_blocks_three,stack_blocks_two,stack_bowls_three,stack_bowls_two,stamp_seal,turn_switch,wipe_board,arrange_tools,build_tower,fold_cloth \
+  --env.task=adjust_bottle,beat_block_hammer,blocks_ranking_rgb,blocks_ranking_size,click_alarmclock,click_bell,dump_bin_bigbin,grab_roller,handover_block,handover_mic,hanging_mug,lift_pot,move_can_pot,move_pillbottle_pad,move_playingcard_away,move_stapler_pad,open_microwave,pick_diverse_bottles,pick_dual_bottles,place_a2b_left,place_a2b_right,place_bread_basket,place_bread_skillet,place_burger_fries,place_can_basket,place_cans_plasticbox,place_container_plate,place_dual_shoes,place_empty_cup,place_fan,place_mouse_pad,place_object_basket,place_object_scale,place_object_stand,place_phone_stand,place_shoe,press_stapler,put_bottles_dustbin,put_object_cabinet,rotate_qrcode,scan_object,shake_bottle,shake_bottle_horizontally,stack_blocks_three,stack_blocks_two,stack_bowls_three,stack_bowls_two,stamp_seal,turn_switch \
   --eval.batch_size=1 \
   --eval.n_episodes=100
 ```
+
+<Tip>
+  `open_laptop` is intentionally omitted above because of the upstream
+  `self.arm_tag` bug (see the **Available tasks** section). Re-add it once the
+  upstream fix lands.
+</Tip>
 
 ## Camera configuration
 

@@ -581,7 +581,7 @@ class IsaaclabArenaEnv(HubEnvConfig):
 class RoboTwinEnvConfig(EnvConfig):
     """Configuration for RoboTwin 2.0 benchmark environments.
 
-    RoboTwin 2.0 is a dual-arm manipulation benchmark with 60 tasks built on the
+    RoboTwin 2.0 is a dual-arm manipulation benchmark with 50 tasks built on the
     SAPIEN simulator. The robot is an Aloha-AgileX bimanual platform with 14 DOF
     (7 per arm). All three cameras are enabled by default.
 
