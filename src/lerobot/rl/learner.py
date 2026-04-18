@@ -51,6 +51,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from pprint import pformat
+from typing import Any
 
 import grpc
 import torch
@@ -181,7 +182,7 @@ def train(cfg: TrainRLServerPipelineConfig, job_name: str | None = None):
 def start_learner_threads(
     cfg: TrainRLServerPipelineConfig,
     wandb_logger: WandBLogger | None,
-    shutdown_event: any,  # Event,
+    shutdown_event: Any,  # Event
 ) -> None:
     """
     Start the learner threads for training.
@@ -255,7 +256,7 @@ def start_learner_threads(
 def add_actor_information_and_train(
     cfg: TrainRLServerPipelineConfig,
     wandb_logger: WandBLogger | None,
-    shutdown_event: any,  # Event,
+    shutdown_event: Any,  # Event
     transition_queue: Queue,
     interaction_message_queue: Queue,
     parameters_queue: Queue,
@@ -465,7 +466,7 @@ def start_learner(
     parameters_queue: Queue,
     transition_queue: Queue,
     interaction_message_queue: Queue,
-    shutdown_event: any,  # Event,
+    shutdown_event: Any,  # Event
     cfg: TrainRLServerPipelineConfig,
 ):
     """
@@ -907,7 +908,7 @@ def process_transitions(
     replay_buffer: ReplayBuffer,
     offline_replay_buffer: ReplayBuffer,
     dataset_repo_id: str | None,
-    shutdown_event: any,
+    shutdown_event: Any,  # Event
 ):
     """Process all available transitions from the queue.
 
@@ -945,7 +946,7 @@ def process_interaction_messages(
     interaction_message_queue: Queue,
     interaction_step_shift: int,
     wandb_logger: WandBLogger | None,
-    shutdown_event: any,
+    shutdown_event: Any,  # Event
 ) -> dict | None:
     """Process all available interaction messages from the queue.
 

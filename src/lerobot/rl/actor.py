@@ -51,11 +51,12 @@ import os
 import time
 from functools import lru_cache
 from queue import Empty
+from typing import Any
 
 import grpc
 import torch
 from torch import nn
-from torch.multiprocessing import Event, Queue
+from torch.multiprocessing import Queue
 
 from lerobot.cameras import opencv  # noqa: F401
 from lerobot.configs import parser
@@ -210,7 +211,7 @@ def actor_cli(cfg: TrainRLServerPipelineConfig):
 
 def act_with_policy(
     cfg: TrainRLServerPipelineConfig,
-    shutdown_event: any,  # Event,
+    shutdown_event: Any,  # Event
     parameters_queue: Queue,
     transitions_queue: Queue,
     interactions_queue: Queue,
@@ -414,7 +415,7 @@ def act_with_policy(
 
 def establish_learner_connection(
     stub: services_pb2_grpc.LearnerServiceStub,
-    shutdown_event: Event,  # type: ignore
+    shutdown_event: Any,  # Event
     attempts: int = 30,
 ):
     """Establish a connection with the learner.
@@ -466,7 +467,7 @@ def learner_service_client(
 def receive_policy(
     cfg: TrainRLServerPipelineConfig,
     parameters_queue: Queue,
-    shutdown_event: Event,  # type: ignore
+    shutdown_event: Any,  # Event
     learner_client: services_pb2_grpc.LearnerServiceStub | None = None,
     grpc_channel: grpc.Channel | None = None,
 ):
@@ -518,7 +519,7 @@ def receive_policy(
 def send_transitions(
     cfg: TrainRLServerPipelineConfig,
     transitions_queue: Queue,
-    shutdown_event: any,  # Event,
+    shutdown_event: Any,  # Event
     learner_client: services_pb2_grpc.LearnerServiceStub | None = None,
     grpc_channel: grpc.Channel | None = None,
 ) -> services_pb2.Empty:
@@ -568,7 +569,7 @@ def send_transitions(
 def send_interactions(
     cfg: TrainRLServerPipelineConfig,
     interactions_queue: Queue,
-    shutdown_event: Event,  # type: ignore
+    shutdown_event: Any,  # Event
     learner_client: services_pb2_grpc.LearnerServiceStub | None = None,
     grpc_channel: grpc.Channel | None = None,
 ) -> services_pb2.Empty:
@@ -618,7 +619,11 @@ def send_interactions(
     logging.info("[ACTOR] Interactions process stopped")
 
 
-def transitions_stream(shutdown_event: Event, transitions_queue: Queue, timeout: float) -> services_pb2.Empty:  # type: ignore
+def transitions_stream(
+    shutdown_event: Any,  # Event
+    transitions_queue: Queue,
+    timeout: float,
+) -> services_pb2.Empty:
     while not shutdown_event.is_set():
         try:
             message = transitions_queue.get(block=True, timeout=timeout)
@@ -634,9 +639,9 @@ def transitions_stream(shutdown_event: Event, transitions_queue: Queue, timeout:
 
 
 def interactions_stream(
-    shutdown_event: Event,
+    shutdown_event: Any,  # Event
     interactions_queue: Queue,
-    timeout: float,  # type: ignore
+    timeout: float,
 ) -> services_pb2.Empty:
     while not shutdown_event.is_set():
         try:
