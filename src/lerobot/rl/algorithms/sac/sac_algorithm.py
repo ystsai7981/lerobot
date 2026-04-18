@@ -114,7 +114,7 @@ class SACAlgorithm(RLAlgorithm):
             **asdict(self.config.discrete_critic_network_kwargs),
         )
 
-        # TODO: (maractingi, azouitine) Compile the discrete critic
+        # TODO(Khalil): Compile the discrete critic
         discrete_critic_target.load_state_dict(discrete_critic.state_dict())
         return discrete_critic, discrete_critic_target
 

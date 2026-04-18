@@ -194,6 +194,8 @@ class SACConfig(PreTrainedConfig):
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
 
     # Optimizations
+    # torch.compile is currently disabled by default due to known issues with the SAC
+    # critic ensemble and shared encoder.
     use_torch_compile: bool = False
 
     def __post_init__(self):
