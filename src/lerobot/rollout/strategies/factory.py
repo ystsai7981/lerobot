@@ -25,7 +25,7 @@ from .highlight import HighlightStrategy
 from .sentry import SentryStrategy
 
 if TYPE_CHECKING:
-    from lerobot.rollout.configs import RolloutStrategyConfig
+    from lerobot.rollout import RolloutStrategyConfig
 
 
 def create_strategy(config: RolloutStrategyConfig) -> RolloutStrategy:

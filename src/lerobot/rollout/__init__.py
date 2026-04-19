@@ -14,6 +14,10 @@
 
 """Policy deployment engine with pluggable rollout strategies."""
 
+from lerobot.utils.import_utils import require_package
+
+require_package("datasets", extra="dataset")
+
 from .configs import (
     BaseStrategyConfig,
     DAggerKeyboardConfig,
@@ -25,7 +29,15 @@ from .configs import (
     RolloutStrategyConfig,
     SentryStrategyConfig,
 )
-from .context import RolloutContext, build_rollout_context
+from .context import (
+    DatasetContext,
+    HardwareContext,
+    PolicyContext,
+    ProcessorContext,
+    RolloutContext,
+    RuntimeContext,
+    build_rollout_context,
+)
 from .inference import (
     InferenceEngine,
     InferenceEngineConfig,
@@ -44,17 +56,22 @@ __all__ = [
     "DAggerKeyboardConfig",
     "DAggerPedalConfig",
     "DAggerStrategyConfig",
+    "DatasetContext",
+    "DatasetRecordConfig",
+    "HardwareContext",
     "HighlightStrategyConfig",
     "InferenceEngine",
     "InferenceEngineConfig",
+    "PolicyContext",
+    "ProcessorContext",
     "RTCInferenceConfig",
     "RTCInferenceEngine",
     "RolloutConfig",
     "RolloutContext",
-    "DatasetRecordConfig",
     "RolloutRingBuffer",
     "RolloutStrategy",
     "RolloutStrategyConfig",
+    "RuntimeContext",
     "SentryStrategyConfig",
     "SyncInferenceConfig",
     "SyncInferenceEngine",
