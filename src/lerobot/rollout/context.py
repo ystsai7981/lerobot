@@ -27,7 +27,7 @@ from threading import Event
 
 import torch
 
-from lerobot.configs import PreTrainedConfig
+from lerobot.configs import FeatureType, PreTrainedConfig
 from lerobot.datasets import (
     LeRobotDataset,
     aggregate_pipeline_dataset_features,
@@ -186,6 +186,12 @@ def build_rollout_context(
     if hasattr(full_config, "compile_model"):
         full_config.compile_model = cfg.use_torch_compile
 
+    if full_config.type == "vqbet" and cfg.device == "mps":
+        raise NotImplementedError(
+            "Current implementation of VQBeT does not support `mps` backend. "
+            "Please use `cpu` or `cuda` backend."
+        )
+
     if full_config.use_peft:
         from peft import PeftConfig, PeftModel
 
@@ -293,6 +299,22 @@ def build_rollout_context(
         list(policy_action_names) if policy_action_names else None,
         raw_action_keys,
     )
+
+    # Validate visual features if no rename_map is active
+    rename_map = cfg.dataset.rename_map if cfg.dataset else {}
+    if not rename_map:
+        expected_visuals = {k for k, v in full_config.input_features.items() if v.type == FeatureType.VISUAL}
+        provided_visuals = {
+            f"observation.{k}" for k, v in robot.observation_features.items() if isinstance(v, tuple)
+        }
+        policy_subset = expected_visuals.issubset(provided_visuals)
+        hw_subset = provided_visuals.issubset(expected_visuals)
+        if not (policy_subset or hw_subset):
+            raise ValueError(
+                f"Visual feature mismatch between policy and robot hardware.\n"
+                f"Policy expects: {expected_visuals}\n"
+                f"Robot provides: {provided_visuals}"
+            )
 
     # --- 5. Dataset -------------
     dataset = None
