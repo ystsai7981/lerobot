@@ -50,11 +50,13 @@ class BaseStrategy(RolloutStrategy):
 
         start_time = time.perf_counter()
         engine.resume()
+        logger.info("Base strategy control loop started")
 
         while not ctx.runtime.shutdown_event.is_set():
             loop_start = time.perf_counter()
 
             if cfg.duration > 0 and (time.perf_counter() - start_time) >= cfg.duration:
+                logger.info("Duration limit reached (%.0fs)", cfg.duration)
                 break
 
             obs = robot.get_observation()
@@ -64,7 +66,8 @@ class BaseStrategy(RolloutStrategy):
             if self._handle_warmup(cfg.use_torch_compile, loop_start, control_interval):
                 continue
 
-            send_next_action(obs_processed, obs, ctx, interpolator)
+            action_dict = send_next_action(obs_processed, obs, ctx, interpolator)
+            self._log_telemetry(obs_processed, action_dict, ctx.runtime)
 
             dt = time.perf_counter() - loop_start
             if (sleep_t := control_interval - dt) > 0:

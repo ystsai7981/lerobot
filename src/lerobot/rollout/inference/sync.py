@@ -58,15 +58,23 @@ class SyncInferenceEngine(InferenceEngine):
         self._task = task
         self._device = torch.device(device or "cpu")
         self._robot_type = robot_type
+        logger.info(
+            "SyncInferenceEngine initialized (device=%s, action_keys=%d)",
+            self._device,
+            len(ordered_action_keys),
+        )
 
     def start(self) -> None:
         """No background resources to start."""
+        logger.info("SyncInferenceEngine started (inline mode — no background thread)")
 
     def stop(self) -> None:
         """No background resources to stop."""
+        logger.info("SyncInferenceEngine stopped")
 
     def reset(self) -> None:
         """Reset the policy and pre/post-processors."""
+        logger.info("Resetting sync inference state (policy + processors)")
         self._policy.reset()
         self._preprocessor.reset()
         self._postprocessor.reset()

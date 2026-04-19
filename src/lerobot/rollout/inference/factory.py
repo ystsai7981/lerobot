@@ -98,6 +98,7 @@ def create_inference_engine(
     shutdown_event: Event | None = None,
 ) -> InferenceEngine:
     """Instantiate the appropriate inference engine from a config object."""
+    logger.info("Creating inference engine: %s", config.type)
     if isinstance(config, SyncInferenceConfig):
         return SyncInferenceEngine(
             policy=policy,

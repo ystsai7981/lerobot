@@ -62,12 +62,19 @@ class BaseStrategyConfig(RolloutStrategyConfig):
 class SentryStrategyConfig(RolloutStrategyConfig):
     """Continuous autonomous rollout with always-on recording.
 
-    Episodes are auto-rotated every ``episode_duration_s`` seconds and
-    uploaded in the background every ``upload_every_n_episodes`` episodes.
+    Episode duration is derived from camera resolution, FPS, and
+    ``target_video_file_size_mb`` so that each saved episode produces a
+    video file that has crossed the target size.  This aligns episode
+    boundaries with the dataset's video file chunking, so each
+    ``push_to_hub`` call uploads complete video files rather than
+    re-uploading a growing file that hasn't crossed the chunk boundary.
     """
 
-    episode_duration_s: float = 20.0
     upload_every_n_episodes: int = 5
+    # Target video file size in MB for episode rotation.  Episodes are
+    # saved once the estimated video duration would exceed this limit.
+    # Defaults to DEFAULT_VIDEO_FILE_SIZE_IN_MB when set to None.
+    target_video_file_size_mb: float | None = None
 
 
 @RolloutStrategyConfig.register_subclass("highlight")
@@ -129,15 +136,18 @@ class DAggerStrategyConfig(RolloutStrategyConfig):
     3. **upload** — push dataset to hub on demand (corrections-only mode).
 
     When ``record_autonomous=True`` (default) both autonomous and correction
-    frames are recorded with sentry-like time-based episode rotation and
-    background uploading.  Set to ``False`` to record only the human-correction
+    frames are recorded with size-based episode rotation (same as Sentry)
+    and background uploading.  ``push_to_hub`` is blocked while a correction
+    is in progress.  Set to ``False`` to record only the human-correction
     windows, where each correction becomes its own episode.
     """
 
-    episode_time_s: float = 20.0
     num_episodes: int = 10
     record_autonomous: bool = False
     upload_every_n_episodes: int = 5
+    # Target video file size in MB for episode rotation (record_autonomous
+    # mode only).  Defaults to DEFAULT_VIDEO_FILE_SIZE_IN_MB when None.
+    target_video_file_size_mb: float | None = None
     input_device: str = "keyboard"
     keyboard: DAggerKeyboardConfig = field(default_factory=DAggerKeyboardConfig)
     pedal: DAggerPedalConfig = field(default_factory=DAggerPedalConfig)
@@ -184,6 +194,14 @@ class RolloutConfig:
     device: str | None = None
     task: str = ""
     display_data: bool = False
+    # Display data on a remote Rerun server
+    display_ip: str | None = None
+    # Port of the remote Rerun server
+    display_port: int | None = None
+    # Whether to display compressed images in Rerun
+    display_compressed_images: bool = False
+    # Use vocal synthesis to read events
+    play_sounds: bool = True
     resume: bool = False
 
     # Torch compile

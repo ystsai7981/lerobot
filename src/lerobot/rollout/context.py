@@ -98,10 +98,15 @@ class HardwareContext:
     The raw robot is available via ``robot_wrapper.inner`` when needed
     (e.g. for disconnect); strategies should otherwise go through the
     thread-safe wrapper.
+
+    ``initial_position`` stores the robot's joint positions at connect
+    time.  Strategies use it to return the robot to a safe pose before
+    shutting down.
     """
 
     robot_wrapper: ThreadSafeRobot
     teleop: Teleoperator | None
+    initial_position: dict | None = None
 
 
 @dataclass
@@ -167,6 +172,7 @@ def build_rollout_context(
     is_rtc = isinstance(cfg.inference, RTCInferenceConfig)
 
     # --- 1. Policy (heavy I/O, but no hardware yet) -------------------
+    logger.info("Loading policy from '%s'...", cfg.policy.pretrained_path)
     policy_config = cfg.policy
     policy_class = get_policy_class(policy_config.type)
 
@@ -199,6 +205,7 @@ def build_rollout_context(
 
     policy = policy.to(cfg.device)
     policy.eval()
+    logger.info("Policy loaded: type=%s, device=%s", policy_config.type, cfg.device)
 
     if cfg.use_torch_compile and policy.type not in ("pi0", "pi05"):
         try:
@@ -225,14 +232,24 @@ def build_rollout_context(
         robot_observation_processor = robot_observation_processor or _o
 
     # --- 3. Hardware (heaviest side-effect, deferred) -----------------
+    logger.info("Connecting robot (%s)...", cfg.robot.type if cfg.robot else "?")
     robot = make_robot_from_config(cfg.robot)
     robot.connect()
+    logger.info("Robot connected: %s", robot.name)
+
+    # Store the initial joint positions so we can return to a safe pose on shutdown.
+    initial_obs = robot.get_observation()
+    initial_position = {k: v for k, v in initial_obs.items() if k.endswith(".pos")}
+    logger.info("Captured initial robot position (%d keys)", len(initial_position))
+
     robot_wrapper = ThreadSafeRobot(robot)
 
     teleop = None
     if cfg.teleop is not None:
+        logger.info("Connecting teleoperator (%s)...", cfg.teleop.type if cfg.teleop else "?")
         teleop = make_teleoperator_from_config(cfg.teleop)
         teleop.connect()
+        logger.info("Teleoperator connected")
 
     # DAgger requires teleop with motor control capabilities (enable_torque,
     # disable_torque, write_goal_positions).
@@ -280,6 +297,7 @@ def build_rollout_context(
     # --- 5. Dataset -------------
     dataset = None
     if cfg.dataset is not None and not isinstance(cfg.strategy, BaseStrategyConfig):
+        logger.info("Setting up dataset (repo_id=%s)...", cfg.dataset.repo_id)
         if cfg.resume:
             dataset = LeRobotDataset.resume(
                 cfg.dataset.repo_id,
@@ -318,6 +336,9 @@ def build_rollout_context(
                 encoder_threads=cfg.dataset.encoder_threads,
             )
 
+    if dataset is not None:
+        logger.info("Dataset ready: %s (%d existing episodes)", dataset.repo_id, dataset.num_episodes)
+
     # --- 6. Policy pre/post processors (needs dataset stats if any) ---
     dataset_stats = None
     if dataset is not None:
@@ -337,6 +358,10 @@ def build_rollout_context(
     )
 
     # --- 7. Inference strategy (needs policy + pre/post + hardware) --
+    logger.info(
+        "Creating inference engine (type=%s)...",
+        cfg.inference.type if hasattr(cfg.inference, "type") else "sync",
+    )
     task_str = cfg.dataset.single_task if cfg.dataset else cfg.task
     inference_strategy = create_inference_engine(
         cfg.inference,
@@ -356,9 +381,12 @@ def build_rollout_context(
     )
 
     # --- 8. Assemble ---------------------------------------------------
+    logger.info("Rollout context assembled successfully")
     return RolloutContext(
         runtime=RuntimeContext(cfg=cfg, shutdown_event=shutdown_event),
-        hardware=HardwareContext(robot_wrapper=robot_wrapper, teleop=teleop),
+        hardware=HardwareContext(
+            robot_wrapper=robot_wrapper, teleop=teleop, initial_position=initial_position
+        ),
         policy=PolicyContext(
             policy=policy,
             preprocessor=preprocessor,

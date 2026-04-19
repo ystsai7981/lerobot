@@ -484,7 +484,10 @@ def record(
             listener.stop()
 
         if cfg.dataset.push_to_hub:
-            dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
+            if dataset and dataset.num_episodes > 0:
+                dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
+            else:
+                logging.warning("No episodes saved — skipping push to hub")
 
         log_say("Exiting", cfg.play_sounds)
     return dataset

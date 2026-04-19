@@ -158,6 +158,12 @@ class RTCInferenceEngine(InferenceEngine):
 
         if not self._use_torch_compile:
             self._compile_warmup_done.set()
+            logger.info("RTCInferenceEngine initialized (torch.compile disabled, no warmup needed)")
+        else:
+            logger.info(
+                "RTCInferenceEngine initialized (torch.compile enabled, %d warmup inferences)",
+                compile_warmup_inferences,
+            )
 
         # Processor introspection for relative-action re-anchoring.
         self._relative_step = next(
@@ -216,22 +222,30 @@ class RTCInferenceEngine(InferenceEngine):
 
     def stop(self) -> None:
         """Signal the RTC thread to stop and wait for it."""
+        logger.info("Stopping RTC inference thread...")
         self._shutdown_event.set()
         self._policy_active.clear()
         if self._rtc_thread is not None and self._rtc_thread.is_alive():
             self._rtc_thread.join(timeout=_RTC_JOIN_TIMEOUT_S)
+            if self._rtc_thread.is_alive():
+                logger.warning("RTC thread did not join within %.1fs", _RTC_JOIN_TIMEOUT_S)
+            else:
+                logger.info("RTC inference thread stopped")
             self._rtc_thread = None
 
     def pause(self) -> None:
         """Pause the RTC background thread."""
+        logger.info("Pausing RTC inference thread")
         self._policy_active.clear()
 
     def resume(self) -> None:
         """Resume the RTC background thread."""
+        logger.info("Resuming RTC inference thread")
         self._policy_active.set()
 
     def reset(self) -> None:
         """Reset the policy, processors, and action queue."""
+        logger.info("Resetting RTC inference state (policy + processors + queue)")
         self._policy.reset()
         self._preprocessor.reset()
         self._postprocessor.reset()

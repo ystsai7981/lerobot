@@ -44,7 +44,6 @@ Usage examples::
     # Sentry mode (continuous recording)
     lerobot-rollout \\
         --strategy.type=sentry \\
-        --strategy.episode_duration_s=120 \\
         --strategy.upload_every_n_episodes=5 \\
         --policy.path=lerobot/pi0_base \\
         --inference.type=rtc \\
@@ -82,9 +81,7 @@ from lerobot.robots import (  # noqa: F401
     so_follower,
     unitree_g1 as unitree_g1_robot,
 )
-from lerobot.rollout.configs import RolloutConfig
-from lerobot.rollout.context import build_rollout_context
-from lerobot.rollout.strategies import create_strategy
+from lerobot.rollout import RolloutConfig, build_rollout_context, create_strategy
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
@@ -102,6 +99,7 @@ from lerobot.teleoperators import (  # noqa: F401
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.process import ProcessSignalHandler
 from lerobot.utils.utils import init_logging
+from lerobot.utils.visualization_utils import init_rerun
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +109,10 @@ def rollout(cfg: RolloutConfig):
     """Main entry point for policy deployment."""
     init_logging()
 
+    if cfg.display_data:
+        logger.info("Initializing Rerun visualization (ip=%s, port=%s)", cfg.display_ip, cfg.display_port)
+        init_rerun(session_name="rollout", ip=cfg.display_ip, port=cfg.display_port)
+
     signal_handler = ProcessSignalHandler(use_threads=True, display_pid=False)
     shutdown_event = signal_handler.shutdown_event
 
@@ -118,10 +120,17 @@ def rollout(cfg: RolloutConfig):
     ctx = build_rollout_context(cfg, shutdown_event)
 
     strategy = create_strategy(cfg.strategy)
-    logger.info("Strategy: %s", cfg.strategy.type)
+    logger.info("Rollout strategy: %s", cfg.strategy.type)
+    logger.info(
+        "Robot: %s | FPS: %.0f | Duration: %s",
+        cfg.robot.type if cfg.robot else "?",
+        cfg.fps,
+        f"{cfg.duration}s" if cfg.duration > 0 else "infinite",
+    )
 
     try:
         strategy.setup(ctx)
+        logger.info("Rollout setup complete, starting rollout...")
         strategy.run(ctx)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")

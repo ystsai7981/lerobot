@@ -30,11 +30,12 @@ from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame
 from lerobot.utils.import_utils import _pynput_available, require_package
 from lerobot.utils.robot_utils import precise_sleep
+from lerobot.utils.utils import log_say
 
 from ..configs import HighlightStrategyConfig
 from ..context import RolloutContext
 from ..ring_buffer import RolloutRingBuffer
-from .core import RolloutStrategy, send_next_action
+from .core import RolloutStrategy, safe_push_to_hub, send_next_action
 
 PYNPUT_AVAILABLE = _pynput_available
 keyboard = None
@@ -91,6 +92,11 @@ class HighlightStrategy(RolloutStrategy):
         )
 
         self._push_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="highlight-push")
+        logger.info(
+            "Ring buffer initialized (max_seconds=%.0f, max_memory=%.0fMB)",
+            self.config.ring_buffer_seconds,
+            self.config.ring_buffer_max_memory_mb,
+        )
         self._setup_keyboard(ctx.runtime.shutdown_event)
         logger.info(
             "Highlight strategy ready (buffer=%.0fs, save='%s', push='%s')",
@@ -112,9 +118,11 @@ class HighlightStrategy(RolloutStrategy):
         control_interval = interpolator.get_control_interval(cfg.fps)
 
         engine.resume()
+        play_sounds = cfg.play_sounds
 
         start_time = time.perf_counter()
         task_str = cfg.dataset.single_task if cfg.dataset else cfg.task
+        logger.info("Highlight strategy recording started (press '%s' to save)", self.config.save_key)
 
         with VideoEncodingManager(dataset):
             try:
@@ -122,6 +130,7 @@ class HighlightStrategy(RolloutStrategy):
                     loop_start = time.perf_counter()
 
                     if cfg.duration > 0 and (time.perf_counter() - start_time) >= cfg.duration:
+                        logger.info("Duration limit reached (%.0fs)", cfg.duration)
                         break
 
                     obs = robot.get_observation()
@@ -134,6 +143,7 @@ class HighlightStrategy(RolloutStrategy):
                     action_dict = send_next_action(obs_processed, obs, ctx, interpolator)
 
                     if action_dict is not None:
+                        self._log_telemetry(obs_processed, action_dict, ctx.runtime)
                         obs_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
                         action_frame = build_dataset_frame(features, action_dict, prefix=ACTION)
                         frame = {**obs_frame, **action_frame, "task": task_str}
@@ -159,11 +169,16 @@ class HighlightStrategy(RolloutStrategy):
                             else:
                                 dataset.add_frame(frame)
                                 dataset.save_episode()
-                                logger.info("Episode saved")
+                                logger.info("Episode saved (total: %d)", dataset.num_episodes)
+                                log_say(
+                                    f"Episode {dataset.num_episodes} saved",
+                                    play_sounds,
+                                )
                                 self._recording_live.clear()
 
                         if self._push_requested.is_set():
                             self._push_requested.clear()
+                            logger.info("Push requested by user")
                             self._background_push(dataset, cfg)
 
                         if self._recording_live.is_set():
@@ -176,26 +191,39 @@ class HighlightStrategy(RolloutStrategy):
                         precise_sleep(sleep_t)
 
             finally:
+                logger.info("Highlight control loop ended")
                 if self._recording_live.is_set():
+                    logger.info("Saving in-progress live episode")
                     with contextlib.suppress(Exception):
                         dataset.save_episode()
 
     def teardown(self, ctx: RolloutContext) -> None:
         """Stop listeners, finalise the dataset, and disconnect hardware."""
+        play_sounds = ctx.runtime.cfg.play_sounds
+        logger.info("Stopping highlight recording")
+        log_say("Stopping highlight recording", play_sounds)
+
         if self._listener is not None:
+            logger.info("Stopping keyboard listener")
             self._listener.stop()
 
         if self._push_executor is not None:
+            logger.info("Shutting down push executor (waiting for pending pushes)...")
             self._push_executor.shutdown(wait=True)
             self._push_executor = None
 
         if ctx.data.dataset is not None:
+            logger.info("Finalizing dataset...")
             ctx.data.dataset.finalize()
             if ctx.runtime.cfg.dataset and ctx.runtime.cfg.dataset.push_to_hub:
-                ctx.data.dataset.push_to_hub(
+                logger.info("Pushing final dataset to hub...")
+                if safe_push_to_hub(
+                    ctx.data.dataset,
                     tags=ctx.runtime.cfg.dataset.tags,
                     private=ctx.runtime.cfg.dataset.private,
-                )
+                ):
+                    logger.info("Dataset uploaded to hub")
+                    log_say("Dataset uploaded to hub", play_sounds)
 
         self._teardown_hardware(ctx.hardware)
         logger.info("Highlight strategy teardown complete")
@@ -222,6 +250,7 @@ class HighlightStrategy(RolloutStrategy):
 
             self._listener = keyboard.Listener(on_press=on_press)
             self._listener.start()
+            logger.info("Keyboard listener started (save='%s', push='%s', ESC=stop)", save_key, push_key)
         except ImportError:
             logger.warning("pynput not available — keyboard listener disabled")
 
@@ -235,12 +264,14 @@ class HighlightStrategy(RolloutStrategy):
 
         def _push():
             try:
-                dataset.push_to_hub(
+                if safe_push_to_hub(
+                    dataset,
                     tags=cfg.dataset.tags if cfg.dataset else None,
                     private=cfg.dataset.private if cfg.dataset else False,
-                )
-                logger.info("Background push to hub complete")
+                ):
+                    logger.info("Background push to hub complete")
             except Exception as e:
                 logger.error("Background push failed: %s", e)
 
         self._pending_push = self._push_executor.submit(_push)
+        logger.info("Background push task submitted")

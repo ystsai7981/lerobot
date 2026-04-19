@@ -15,6 +15,7 @@
 """Shared dataset recording configuration used by both ``lerobot-record`` and ``lerobot-rollout``."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 
@@ -69,3 +70,8 @@ class DatasetRecordConfig:
     encoder_threads: int | None = None
     # Rename map for the observation to override the image and state keys
     rename_map: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.repo_id:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.repo_id = f"{self.repo_id}_{timestamp}"

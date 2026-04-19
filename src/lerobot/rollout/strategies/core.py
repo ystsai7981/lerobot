@@ -17,19 +17,24 @@
 from __future__ import annotations
 
 import abc
+import logging
 import time
 from typing import TYPE_CHECKING
 
+from lerobot.datasets.utils import DEFAULT_VIDEO_FILE_SIZE_IN_MB
 from lerobot.utils.action_interpolator import ActionInterpolator
 from lerobot.utils.constants import OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame
 from lerobot.utils.robot_utils import precise_sleep
+from lerobot.utils.visualization_utils import log_rerun_data
 
 from ..inference import InferenceEngine
 
 if TYPE_CHECKING:
     from ..configs import RolloutStrategyConfig
-    from ..context import HardwareContext, RolloutContext
+    from ..context import HardwareContext, RolloutContext, RuntimeContext
+
+logger = logging.getLogger(__name__)
 
 
 class RolloutStrategy(abc.ABC):
@@ -54,8 +59,10 @@ class RolloutStrategy(abc.ABC):
         """
         self._interpolator = ActionInterpolator(multiplier=ctx.runtime.cfg.interpolation_multiplier)
         self._engine = ctx.policy.inference
+        logger.info("Starting inference engine...")
         self._engine.start()
         self._warmup_flushed = False
+        logger.info("Inference engine started")
 
     def _handle_warmup(self, use_torch_compile: bool, loop_start: float, control_interval: float) -> bool:
         """Handle torch.compile warmup phase.
@@ -74,6 +81,7 @@ class RolloutStrategy(abc.ABC):
                 precise_sleep(sleep_t)
             return True
         if not self._warmup_flushed:
+            logger.info("Warmup complete — flushing stale state and resuming engine")
             engine.reset()
             interpolator.reset()
             self._warmup_flushed = True
@@ -81,15 +89,56 @@ class RolloutStrategy(abc.ABC):
         return False
 
     def _teardown_hardware(self, hw: HardwareContext) -> None:
-        """Stop the inference engine and disconnect hardware."""
+        """Stop the inference engine, return robot to initial position, and disconnect hardware."""
         if self._engine is not None:
+            logger.info("Stopping inference engine...")
             self._engine.stop()
         robot = hw.robot_wrapper.inner
         if robot.is_connected:
+            if hw.initial_position:
+                logger.info("Returning robot to initial position before shutdown...")
+                self._return_to_initial_position(hw)
+            logger.info("Disconnecting robot...")
             robot.disconnect()
         teleop = hw.teleop
         if teleop is not None and teleop.is_connected:
+            logger.info("Disconnecting teleoperator...")
             teleop.disconnect()
+
+    @staticmethod
+    def _return_to_initial_position(hw: HardwareContext, duration_s: float = 3.0, fps: int = 50) -> None:
+        """Smoothly interpolate the robot back to its initial position."""
+        robot = hw.robot_wrapper
+        target = hw.initial_position
+        try:
+            current_obs = robot.get_observation()
+            current_pos = {k: v for k, v in current_obs.items() if k in target}
+            steps = max(int(duration_s * fps), 1)
+            for step in range(1, steps + 1):
+                t = step / steps
+                interp = {}
+                for k in current_pos:
+                    interp[k] = current_pos[k] * (1 - t) + target[k] * t
+                robot.send_action(interp)
+                precise_sleep(1 / fps)
+        except Exception as e:
+            logger.warning("Could not return to initial position: %s", e)
+
+    @staticmethod
+    def _log_telemetry(
+        obs_processed: dict | None,
+        action_dict: dict | None,
+        runtime_ctx: RuntimeContext,
+    ) -> None:
+        """Log observation/action telemetry to Rerun if display_data is enabled."""
+        cfg = runtime_ctx.cfg
+        if not cfg.display_data:
+            return
+        log_rerun_data(
+            observation=obs_processed,
+            action=action_dict,
+            compress_images=cfg.display_compressed_images,
+        )
 
     @abc.abstractmethod
     def setup(self, ctx: RolloutContext) -> None:
@@ -102,6 +151,82 @@ class RolloutStrategy(abc.ABC):
     @abc.abstractmethod
     def teardown(self, ctx: RolloutContext) -> None:
         """Cleanup: save dataset, stop threads, disconnect hardware."""
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+
+def safe_push_to_hub(dataset, tags=None, private=False) -> bool:
+    """Push dataset to hub, skipping if no episodes have been saved.
+
+    Returns ``True`` if the push was attempted, ``False`` if skipped.
+    """
+    if dataset.num_episodes == 0:
+        logger.warning("No episodes saved — skipping push to hub")
+        return False
+    dataset.push_to_hub(tags=tags, private=private)
+    return True
+
+
+def estimate_max_episode_seconds(
+    dataset_features: dict,
+    fps: float,
+    target_size_mb: float = DEFAULT_VIDEO_FILE_SIZE_IN_MB,
+) -> float:
+    """Conservatively estimate how many seconds of video will exceed *target_size_mb*.
+
+    Each camera produces its own video file, so the episode duration is
+    driven by the **slowest** camera to fill ``target_size_mb`` — i.e.
+    the one with the fewest pixels per frame (lowest bitrate).
+
+    Uses a deliberately **low** bits-per-pixel estimate so the computed
+    duration is *longer* than reality.  By the time the timer fires the
+    actual video file is guaranteed to have crossed the target size,
+    which aligns episode boundaries with the dataset's video-file
+    chunking — each ``push_to_hub`` uploads complete files rather than
+    re-uploading a still-growing one.
+
+    The estimate ignores codec-specific settings (CRF, preset) on purpose:
+    we only need a rough lower bound on bitrate, not a precise prediction.
+
+    Falls back to 600 s (10 min) when no video features are present.
+    """
+    # 0.1 bits-per-pixel is a *low* estimate for CRF-30 streaming video of
+    # robot footage (real-world is typically 0.1 – 0.3 bpp).  Under-
+    # estimating the bitrate over-estimates the time → the episode will be
+    # *larger* than target_size_mb when we save, which is what we want.
+    conservative_bpp = 0.1
+
+    # Collect per-camera pixel counts — each camera has its own video file.
+    camera_pixels = []
+    for feat in dataset_features.values():
+        if feat.get("dtype") == "video":
+            shape = feat.get("shape", ())
+
+            # Assuming shape could be (C, H, W) or (T, C, H, W)
+            # We want to extract the spatial dimensions.
+            if len(shape) >= 3:
+                h, w = shape[-2], shape[-1]
+                pixels = h * w
+                if pixels > 0:
+                    camera_pixels.append(pixels)
+
+    if not camera_pixels:
+        return 600.0
+
+    # Use the smallest camera: it produces the lowest bitrate and therefore
+    # takes the longest to reach the target — the conservative choice.
+    min_pixels = min(camera_pixels)
+    bits_per_frame = min_pixels * conservative_bpp
+    bytes_per_second = (bits_per_frame * fps) / 8
+
+    # Guard against division by zero just in case
+    if bytes_per_second <= 0:
+        return 600.0
+
+    return (target_size_mb * 1024 * 1024) / bytes_per_second
 
 
 # ---------------------------------------------------------------------------

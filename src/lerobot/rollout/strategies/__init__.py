@@ -14,11 +14,13 @@
 
 """Rollout strategies — public API re-exports."""
 
-from .core import RolloutStrategy, send_next_action
+from .core import RolloutStrategy, estimate_max_episode_seconds, safe_push_to_hub, send_next_action
 from .factory import create_strategy
 
 __all__ = [
     "RolloutStrategy",
     "create_strategy",
+    "estimate_max_episode_seconds",
+    "safe_push_to_hub",
     "send_next_action",
 ]
