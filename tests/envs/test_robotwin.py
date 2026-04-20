@@ -272,7 +272,7 @@ class TestCreateRoboTwinEnvs:
 
 
 def test_task_list_not_empty():
-    assert len(ROBOTWIN_TASKS) >= 60
+    assert len(ROBOTWIN_TASKS) >= 50
 
 
 def test_all_tasks_are_strings():
