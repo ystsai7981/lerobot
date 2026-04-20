@@ -23,12 +23,10 @@ on:
       - feat/libero-benchmark
     paths:
       - .github/workflows/model_profiling.yml
-      - profiling/model_profiling_specs.json
-      - scripts/ci/run_model_profiling.py
       - src/lerobot/configs/train.py
       - src/lerobot/scripts/lerobot_train.py
-      - src/lerobot/utils/profiling_utils.py
-      - tests/scripts/test_model_profiling.py
+      - src/lerobot/utils/model_profiling.py
+      - tests/test_model_profiling.py
   workflow_dispatch:
     inputs:
       git_ref:
@@ -206,7 +204,7 @@ jobs:
                 fi
 
                 cmd=(
-                  uv run python scripts/ci/run_model_profiling.py
+                  uv run python -m lerobot.utils.model_profiling
                   --output_dir=/workspace/profiling-results
                   --hub_org=lerobot
                   --results_repo="${RESULTS_REPO}"

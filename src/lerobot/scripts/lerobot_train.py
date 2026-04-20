@@ -49,7 +49,7 @@ from lerobot.optim.factory import make_optimizer_and_scheduler
 from lerobot.policies import PreTrainedPolicy, make_policy, make_pre_post_processors
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.logging_utils import AverageMeter, MetricsTracker
-from lerobot.utils.profiling_utils import TrainingProfiler
+from lerobot.utils.model_profiling import TrainingProfiler
 from lerobot.utils.random_utils import set_seed
 from lerobot.utils.utils import (
     cycle,
