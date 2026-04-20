@@ -422,6 +422,22 @@ def build_rollout_context(
         },
     )
 
+    # --- Debug: verify normalizer stats loaded from pretrained ---
+    from lerobot.processor import NormalizerProcessorStep, UnnormalizerProcessorStep
+
+    for step in preprocessor.steps:
+        if isinstance(step, NormalizerProcessorStep):
+            n_stats = sum(len(v) for v in step._tensor_stats.values()) if step._tensor_stats else 0
+            logger.info("Preprocessor normalizer: %d stat tensors, keys=%s", n_stats, list(step._tensor_stats.keys())[:3])
+            if n_stats == 0:
+                logger.error("PREPROCESSOR NORMALIZER HAS NO STATS — observations will NOT be normalized!")
+    for step in postprocessor.steps:
+        if isinstance(step, UnnormalizerProcessorStep):
+            n_stats = sum(len(v) for v in step._tensor_stats.values()) if step._tensor_stats else 0
+            logger.info("Postprocessor unnormalizer: %d stat tensors, keys=%s", n_stats, list(step._tensor_stats.keys())[:3])
+            if n_stats == 0:
+                logger.error("POSTPROCESSOR UNNORMALIZER HAS NO STATS — actions will NOT be denormalized!")
+
     # --- 7. Inference strategy (needs policy + pre/post + hardware) --
     logger.info(
         "Creating inference engine (type=%s)...",
