@@ -328,6 +328,8 @@ jobs:
       group: aws-g6-4xlarge-plus
     env:
       HF_USER_TOKEN: ${{ secrets.LEROBOT_HF_USER }}
+      ROBOTWIN_POLICY: lerobot/smolvla_robotwin
+      ROBOTWIN_TASKS: beat_block_hammer,click_bell,handover_block,stack_blocks_two,click_alarmclock,open_microwave,adjust_bottle,lift_pot,stamp_seal,turn_switch
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -371,13 +373,15 @@ jobs:
             --shm-size=4g \
             -e HF_HOME=/tmp/hf \
             -e HF_USER_TOKEN="${HF_USER_TOKEN}" \
+            -e ROBOTWIN_POLICY="${ROBOTWIN_POLICY}" \
+            -e ROBOTWIN_TASKS="${ROBOTWIN_TASKS}" \
             lerobot-benchmark-robotwin:ci \
             bash -c "
               hf auth login --token \"\$HF_USER_TOKEN\" --add-to-git-credential 2>/dev/null || true
               cd /opt/robotwin && lerobot-eval \
-                --policy.path=lerobot/smolvla_robotwin \
+                --policy.path=\"\$ROBOTWIN_POLICY\" \
                 --env.type=robotwin \
-                --env.task=beat_block_hammer,click_bell,handover_block,stack_blocks_two,click_alarmclock,open_microwave,adjust_bottle,lift_pot,stamp_seal,turn_switch \
+                --env.task=\"\$ROBOTWIN_TASKS\" \
                 --eval.batch_size=1 \
                 --eval.n_episodes=1 \
                 --eval.use_async_envs=false \
@@ -386,7 +390,7 @@ jobs:
                 --output_dir=/tmp/eval-artifacts
               python /lerobot/scripts/ci/extract_task_descriptions.py \
                 --env robotwin \
-                --task beat_block_hammer,click_bell,handover_block,stack_blocks_two,click_alarmclock,open_microwave,adjust_bottle,lift_pot,stamp_seal,turn_switch \
+                --task \"\$ROBOTWIN_TASKS\" \
                 --output /tmp/eval-artifacts/task_descriptions.json
             "
 
@@ -403,8 +407,8 @@ jobs:
           python3 scripts/ci/parse_eval_metrics.py \
             --artifacts-dir /tmp/robotwin-artifacts \
             --env robotwin \
-            --task beat_block_hammer,click_bell,handover_block,stack_blocks_two,click_alarmclock,open_microwave,adjust_bottle,lift_pot,stamp_seal,turn_switch \
-            --policy lerobot/smolvla_robotwin
+            --task "${ROBOTWIN_TASKS}" \
+            --policy "${ROBOTWIN_POLICY}"
 
       - name: Upload RoboTwin rollout video
         if: always()

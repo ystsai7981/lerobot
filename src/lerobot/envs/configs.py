@@ -650,7 +650,7 @@ class RoboTwinEnvConfig(EnvConfig):
         if not self.task:
             raise ValueError("RoboTwinEnvConfig requires `task` to be specified.")
 
-        env_cls = gym.vector.AsyncVectorEnv if (use_async_envs and n_envs > 1) else gym.vector.SyncVectorEnv
+        env_cls = _make_vec_env_cls(use_async_envs, n_envs)
         cam_list = [c.strip() for c in self.camera_names.split(",") if c.strip()]
         return create_robotwin_envs(
             task=self.task,
@@ -660,13 +660,4 @@ class RoboTwinEnvConfig(EnvConfig):
             observation_height=self.observation_height,
             observation_width=self.observation_width,
             episode_length=self.episode_length,
-        )
-
-    def get_env_processors(self):
-        from lerobot.processor.env_processor import RoboTwinProcessorStep
-        from lerobot.processor.pipeline import PolicyProcessorPipeline
-
-        return (
-            PolicyProcessorPipeline(steps=[RoboTwinProcessorStep()]),
-            PolicyProcessorPipeline(steps=[]),
         )

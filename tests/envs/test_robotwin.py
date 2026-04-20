@@ -28,7 +28,6 @@ from unittest.mock import MagicMock, patch
 import gymnasium as gym
 import numpy as np
 import pytest
-import torch
 
 from lerobot.envs.robotwin import (
     ACTION_DIM,
@@ -56,7 +55,7 @@ def _make_mock_task_env(
     """
     obs_dict = {
         "observation": {cam: {"rgb": np.zeros((height, width, 3), dtype=np.uint8)} for cam in cameras},
-        "joint_action": {"vector": np.zeros(ACTION_DIM, dtype=np.float64)},
+        "joint_action": {"vector": np.zeros(ACTION_DIM, dtype=np.float32)},
         "endpose": {},
     }
 
@@ -281,34 +280,3 @@ def test_all_tasks_are_strings():
 
 def test_no_duplicate_tasks():
     assert len(ROBOTWIN_TASKS) == len(set(ROBOTWIN_TASKS))
-
-
-# ---------------------------------------------------------------------------
-# RoboTwinProcessorStep
-# ---------------------------------------------------------------------------
-
-
-class TestRoboTwinProcessorStep:
-    def test_passes_through_images_and_state(self):
-        from lerobot.processor.env_processor import RoboTwinProcessorStep
-        from lerobot.utils.constants import OBS_IMAGES, OBS_STATE
-
-        step = RoboTwinProcessorStep()
-        obs = {
-            f"{OBS_IMAGES}.head_camera": torch.zeros(1, 3, 4, 4),
-            f"{OBS_IMAGES}.left_camera": torch.zeros(1, 3, 4, 4),
-            OBS_STATE: torch.zeros(1, 14),
-        }
-        result = step.observation(obs)
-        assert f"{OBS_IMAGES}.head_camera" in result
-        assert f"{OBS_IMAGES}.left_camera" in result
-        assert result[OBS_STATE].dtype == torch.float32
-
-    def test_state_cast_to_float32(self):
-        from lerobot.processor.env_processor import RoboTwinProcessorStep
-        from lerobot.utils.constants import OBS_STATE
-
-        step = RoboTwinProcessorStep()
-        obs = {OBS_STATE: torch.zeros(1, 14, dtype=torch.float64)}
-        result = step.observation(obs)
-        assert result[OBS_STATE].dtype == torch.float32

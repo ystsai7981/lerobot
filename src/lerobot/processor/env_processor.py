@@ -226,29 +226,3 @@ class IsaaclabArenaProcessorStep(ObservationProcessorStep):
 
     def observation(self, observation):
         return self._process_observation(observation)
-
-
-@dataclass
-@ProcessorStepRegistry.register(name="robotwin_processor")
-class RoboTwinProcessorStep(ObservationProcessorStep):
-    """Passthrough step for RoboTwin observations, casting state to float32.
-
-    RoboTwin observations already arrive in LeRobot format (observation.images.*
-    and observation.state), so this step mainly ensures state dtype is float32.
-    """
-
-    def _process_observation(self, observation):
-        processed_obs = dict(observation)
-        if OBS_STATE in processed_obs:
-            state = processed_obs[OBS_STATE]
-            if hasattr(state, "dtype") and state.dtype != torch.float32:
-                processed_obs[OBS_STATE] = state.float()
-        return processed_obs
-
-    def transform_features(
-        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]]
-    ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
-        return features
-
-    def observation(self, observation):
-        return self._process_observation(observation)

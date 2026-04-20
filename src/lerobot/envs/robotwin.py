@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from functools import partial
@@ -27,6 +28,10 @@ import torch
 from gymnasium import spaces
 
 from lerobot.types import RobotObservation
+
+from .utils import _LazyAsyncVectorEnv
+
+logger = logging.getLogger(__name__)
 
 # Camera names as used by RoboTwin 2.0. The wrapper appends "_rgb" when looking
 # up keys in get_obs() output (e.g. "head_camera" → "head_camera_rgb").
@@ -126,7 +131,7 @@ def _load_robotwin_setup_kwargs(task_name: str) -> dict[str, Any]:
     from envs import CONFIGS_PATH  # type: ignore[import-not-found]
 
     task_config = "demo_clean"
-    with open(f"./task_config/{task_config}.yml", encoding="utf-8") as f:
+    with open(os.path.join(CONFIGS_PATH, f"{task_config}.yml"), encoding="utf-8") as f:
         args = yaml.safe_load(f)
 
     # Resolve embodiment — demo_clean.yml uses [aloha-agilex] (dual-arm single robot)
@@ -262,7 +267,7 @@ class RoboTwinEnv(gym.Env):
         self.observation_space = spaces.Dict(
             {
                 "pixels": spaces.Dict(image_spaces),
-                "agent_pos": spaces.Box(low=-np.inf, high=np.inf, shape=(ACTION_DIM,), dtype=np.float64),
+                "agent_pos": spaces.Box(low=-np.inf, high=np.inf, shape=(ACTION_DIM,), dtype=np.float32),
             }
         )
         self.action_space = spaces.Box(
@@ -303,12 +308,12 @@ class RoboTwinEnv(gym.Env):
         ja = raw.get("joint_action") or {}
         vec = ja.get("vector")
         if vec is not None:
-            arr = np.asarray(vec, dtype=np.float64).ravel()
+            arr = np.asarray(vec, dtype=np.float32).ravel()
             joint_state = (
-                arr[:ACTION_DIM] if arr.size >= ACTION_DIM else np.zeros(ACTION_DIM, dtype=np.float64)
+                arr[:ACTION_DIM] if arr.size >= ACTION_DIM else np.zeros(ACTION_DIM, dtype=np.float32)
             )
         else:
-            joint_state = np.zeros(ACTION_DIM, dtype=np.float64)
+            joint_state = np.zeros(ACTION_DIM, dtype=np.float32)
 
         return {"pixels": images, "agent_pos": joint_state}
 
@@ -415,8 +420,8 @@ def create_robotwin_envs(
     n_envs: int,
     env_cls: Callable[[Sequence[Callable[[], Any]]], Any] | None = None,
     camera_names: Sequence[str] = ROBOTWIN_CAMERA_NAMES,
-    observation_height: int = 480,
-    observation_width: int = 640,
+    observation_height: int = DEFAULT_CAMERA_H,
+    observation_width: int = DEFAULT_CAMERA_W,
     episode_length: int = DEFAULT_EPISODE_LENGTH,
 ) -> dict[str, dict[int, Any]]:
     """Create vectorized RoboTwin 2.0 environments.
@@ -448,7 +453,16 @@ def create_robotwin_envs(
     if unknown:
         raise ValueError(f"Unknown RoboTwin tasks: {unknown}. Available tasks: {sorted(ROBOTWIN_TASKS)}")
 
-    print(f"Creating RoboTwin envs | tasks={task_names} | n_envs(per task)={n_envs}")
+    logger.info(
+        "Creating RoboTwin envs | tasks=%s | n_envs(per task)=%d",
+        task_names,
+        n_envs,
+    )
+
+    is_async = env_cls is gym.vector.AsyncVectorEnv
+    cached_obs_space: spaces.Space | None = None
+    cached_act_space: spaces.Space | None = None
+    cached_metadata: dict[str, Any] | None = None
 
     out: dict[str, dict[int, Any]] = defaultdict(dict)
     for task_name in task_names:
@@ -460,7 +474,15 @@ def create_robotwin_envs(
             observation_width=observation_width,
             episode_length=episode_length,
         )
-        out[task_name][0] = env_cls(fns)
-        print(f"Built vec env | task={task_name} | n_envs={n_envs}")
+        if is_async:
+            lazy = _LazyAsyncVectorEnv(fns, cached_obs_space, cached_act_space, cached_metadata)
+            if cached_obs_space is None:
+                cached_obs_space = lazy.observation_space
+                cached_act_space = lazy.action_space
+                cached_metadata = lazy.metadata
+            out[task_name][0] = lazy
+        else:
+            out[task_name][0] = env_cls(fns)
+        logger.info("Built vec env | task=%s | n_envs=%d", task_name, n_envs)
 
     return {k: dict(v) for k, v in out.items()}
