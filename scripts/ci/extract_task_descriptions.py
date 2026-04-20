@@ -75,6 +75,23 @@ def _robotwin_descriptions(task_names: str) -> dict[str, str]:
     return out
 
 
+def _robocasa_descriptions(task_spec: str) -> dict[str, str]:
+    """For each task in the comma-separated list, emit a cleaned-name label.
+
+    RoboCasa episodes carry their language instruction in the env's
+    `ep_meta['lang']`, populated per reset. Pulling it requires spinning
+    up the full kitchen env per task (~seconds each); we use the task
+    name as the key here and let the eval's episode info carry the
+    actual instruction.
+    """
+    out: dict[str, str] = {}
+    for task in (t.strip() for t in task_spec.split(",") if t.strip()):
+        # Split CamelCase into words: "CloseFridge" → "close fridge".
+        label = "".join(f" {c.lower()}" if c.isupper() else c for c in task).strip()
+        out[f"{task}_0"] = label or task
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", required=True, help="Environment family (libero, metaworld, ...)")
@@ -90,6 +107,8 @@ def main() -> int:
             descriptions = _metaworld_descriptions(args.task)
         elif args.env == "robotwin":
             descriptions = _robotwin_descriptions(args.task)
+        elif args.env == "robocasa":
+            descriptions = _robocasa_descriptions(args.task)
         else:
             print(
                 f"[extract_task_descriptions] No description extractor for env '{args.env}'.",
