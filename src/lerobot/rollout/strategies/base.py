@@ -48,6 +48,16 @@ class BaseStrategy(RolloutStrategy):
 
         control_interval = interpolator.get_control_interval(cfg.fps)
 
+        # Flush a few observation reads so CAN bus / sensor state is fresh
+        # before the first inference.  Without this, the first observation(s)
+        # can return stale or identical values for all joints, poisoning the
+        # entire first action chunk.
+        _OBS_WARMUP_READS = 5
+        for _ in range(_OBS_WARMUP_READS):
+            robot.get_observation()
+            precise_sleep(1 / cfg.fps)
+        logger.info("Flushed %d observation warmup reads", _OBS_WARMUP_READS)
+
         start_time = time.perf_counter()
         engine.resume()
         logger.info("Base strategy control loop started")

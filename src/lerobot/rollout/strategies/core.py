@@ -63,6 +63,10 @@ class RolloutStrategy(abc.ABC):
         self._engine = ctx.policy.inference
         logger.info("Starting inference engine...")
         self._engine.start()
+        # Reset policy and processor state so the first inference starts clean
+        # (matches the old HIL script which called policy.reset() / preprocessor.reset()
+        # at the beginning of each episode).
+        self._engine.reset()
         self._warmup_flushed = False
         logger.info("Inference engine started")
 
