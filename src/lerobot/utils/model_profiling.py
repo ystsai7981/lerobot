@@ -333,7 +333,14 @@ def write_deterministic_forward_artifacts(
     # the dataloader (PR #3406). The dataset ships camera frames as uint8 for
     # faster transport, but policies like SmolVLA/xVLA run bilinear
     # interpolation on images which doesn't support Byte tensors.
-    for cam_key in dataset.meta.camera_keys:
+    camera_keys = tuple(getattr(getattr(dataset, "meta", None), "camera_keys", ()) or ())
+    if not camera_keys:
+        camera_keys = tuple(
+            key
+            for key, value in reference_batch.items()
+            if key.startswith("observation.images.") and isinstance(value, torch.Tensor)
+        )
+    for cam_key in camera_keys:
         if cam_key in reference_batch and reference_batch[cam_key].dtype == torch.uint8:
             reference_batch[cam_key] = reference_batch[cam_key].to(dtype=torch.float32) / 255.0
     reference_batch = preprocessor(reference_batch)
