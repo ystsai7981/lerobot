@@ -275,7 +275,7 @@ def test_deterministic_forward_artifacts_infers_image_keys_without_dataset_meta(
         def forward(self, batch):
             image = batch["observation.images.front"]
             assert image.dtype == torch.float32
-            assert torch.all((0.0 <= image) & (image <= 1.0))
+            assert torch.all((image >= 0.0) & (image <= 1.0))
             return image.sum(), {"image": image}
 
     dataset = [{"observation.images.front": torch.tensor([[[0, 255]]], dtype=torch.uint8)}]
