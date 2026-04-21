@@ -506,6 +506,7 @@ class DAggerStrategy(RolloutStrategy):
                         episode_start = time.perf_counter()
 
                     dt = time.perf_counter() - loop_start
+                    self._warn_if_slow(dt, control_interval, cfg.fps)
                     if (sleep_t := control_interval - dt) > 0:
                         precise_sleep(sleep_t)
 
@@ -646,6 +647,7 @@ class DAggerStrategy(RolloutStrategy):
                             last_action = ctx.processors.robot_action_processor((action_dict, obs))
 
                     dt = time.perf_counter() - loop_start
+                    self._warn_if_slow(dt, control_interval, cfg.fps)
                     if (sleep_t := control_interval - dt) > 0:
                         precise_sleep(sleep_t)
 

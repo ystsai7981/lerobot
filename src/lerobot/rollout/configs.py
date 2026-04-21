@@ -225,10 +225,10 @@ class RolloutConfig:
         if needs_dataset and (self.dataset is None or not self.dataset.repo_id):
             raise ValueError(f"{self.strategy.type} strategy requires --dataset.repo_id to be set")
 
-        if isinstance(self.strategy, BaseStrategyConfig) and self.dataset is not None:
-            raise ValueError(
-                "Base strategy does not record data. Use sentry, highlight, or dagger for recording."
-            )
+        # if isinstance(self.strategy, BaseStrategyConfig) and self.dataset is not None:
+        #     raise ValueError(
+        #         "Base strategy does not record data. Use sentry, highlight, or dagger for recording."
+        #     )
 
         # Sentry MUST use streaming encoding to avoid disk I/O blocking the control loop
         if (
@@ -284,6 +284,26 @@ class RolloutConfig:
             self.policy.pretrained_path = policy_path
         if self.policy is None:
             raise ValueError("--policy.path is required for rollout")
+
+        # --- Task resolution ---
+        # When --dataset.rename_map (or any --dataset.* flag) is passed, draccus
+        # creates a DatasetRecordConfig with single_task="".  If the user set
+        # the task via the top-level --task flag, propagate it so that all
+        # downstream consumers (inference engine, dataset frame builders) see it.
+        if self.dataset is not None and not self.dataset.single_task and self.task:
+            self.dataset.single_task = self.task
+        elif self.dataset is not None and self.dataset.single_task and not self.task:
+            self.task = self.dataset.single_task
+
+        # --- Device resolution ---
+        # Resolve device from the policy config when not explicitly set so all
+        # components (policy.to, preprocessor, inference engine) use the same
+        # device string instead of inconsistent fallbacks.
+        if self.device is None and self.policy is not None:
+            resolved = getattr(self.policy, "device", None)
+            if resolved:
+                self.device = resolved
+                logger.info("Resolved device from policy config: %s", self.device)
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:

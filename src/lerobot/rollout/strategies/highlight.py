@@ -187,6 +187,7 @@ class HighlightStrategy(RolloutStrategy):
                             ring.append(frame)
 
                     dt = time.perf_counter() - loop_start
+                    self._warn_if_slow(dt, control_interval, cfg.fps)
                     if (sleep_t := control_interval - dt) > 0:
                         precise_sleep(sleep_t)
 

@@ -417,7 +417,7 @@ def build_rollout_context(
         pretrained_path=cfg.policy.pretrained_path,
         dataset_stats=dataset_stats,
         preprocessor_overrides={
-            "device_processor": {"device": cfg.device or getattr(policy_config, "device", "cpu")},
+            "device_processor": {"device": cfg.device},
             "rename_observations_processor": {"rename_map": cfg.dataset.rename_map if cfg.dataset else {}},
         },
     )
@@ -428,13 +428,21 @@ def build_rollout_context(
     for step in preprocessor.steps:
         if isinstance(step, NormalizerProcessorStep):
             n_stats = sum(len(v) for v in step._tensor_stats.values()) if step._tensor_stats else 0
-            logger.info("Preprocessor normalizer: %d stat tensors, keys=%s", n_stats, list(step._tensor_stats.keys())[:3])
+            logger.info(
+                "Preprocessor normalizer: %d stat tensors, keys=%s",
+                n_stats,
+                list(step._tensor_stats.keys())[:3],
+            )
             if n_stats == 0:
                 logger.error("PREPROCESSOR NORMALIZER HAS NO STATS — observations will NOT be normalized!")
     for step in postprocessor.steps:
         if isinstance(step, UnnormalizerProcessorStep):
             n_stats = sum(len(v) for v in step._tensor_stats.values()) if step._tensor_stats else 0
-            logger.info("Postprocessor unnormalizer: %d stat tensors, keys=%s", n_stats, list(step._tensor_stats.keys())[:3])
+            logger.info(
+                "Postprocessor unnormalizer: %d stat tensors, keys=%s",
+                n_stats,
+                list(step._tensor_stats.keys())[:3],
+            )
             if n_stats == 0:
                 logger.error("POSTPROCESSOR UNNORMALIZER HAS NO STATS — actions will NOT be denormalized!")
 

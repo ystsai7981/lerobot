@@ -146,6 +146,20 @@ class RolloutStrategy(abc.ABC):
             compress_images=cfg.display_compressed_images,
         )
 
+    @staticmethod
+    def _warn_if_slow(dt: float, control_interval: float, fps: float) -> None:
+        """Log a warning when the control loop runs slower than target FPS."""
+        if dt > control_interval:
+            actual_fps = 1.0 / dt if dt > 0 else 0
+            logger.warning(
+                "Control loop is running slower (%.1f Hz) than target FPS (%.0f Hz). "
+                "Dataset frames might be dropped and robot control might be unstable. "
+                "Common causes: 1) Camera FPS not keeping up "
+                "2) Policy inference taking too long 3) CPU starvation",
+                actual_fps,
+                fps,
+            )
+
     @abc.abstractmethod
     def setup(self, ctx: RolloutContext) -> None:
         """Strategy-specific initialisation (keyboard listeners, buffers, etc.)."""
