@@ -62,6 +62,7 @@ class RolloutStrategy(abc.ABC):
         self._interpolator = ActionInterpolator(multiplier=ctx.runtime.cfg.interpolation_multiplier)
         self._engine = ctx.policy.inference
         logger.info("Starting inference engine...")
+        self._engine.reset()
         self._engine.start()
         self._warmup_flushed = False
         logger.info("Inference engine started")

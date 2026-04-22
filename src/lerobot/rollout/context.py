@@ -272,11 +272,16 @@ def build_rollout_context(
     #         )
 
     # --- 4. Features + action-key reconciliation ---------------------
+    # TODO(Steven): Only `.pos` joint features are used for policy inference — velocity and
+    # torque channels are observation-only and must be excluded from the state
+    # and action tensors that the policy sees.
     all_obs_features = robot.observation_features
     observation_features_hw = {
-        k: v for k, v in all_obs_features.items() if v is float or isinstance(v, tuple)
+        k: v
+        for k, v in all_obs_features.items()
+        if isinstance(v, tuple) or (v is float and k.endswith(".pos"))
     }
-    action_features_hw = robot.action_features
+    action_features_hw = {k: v for k, v in robot.action_features.items() if k.endswith(".pos")}
 
     # The action side is always needed: sync inference reads action names from
     # ``dataset_features[ACTION]`` to map policy tensors back to robot actions.
@@ -293,7 +298,7 @@ def build_rollout_context(
     )
     dataset_features = combine_feature_dicts(action_dataset_features, observation_dataset_features)
     hw_features = hw_to_dataset_features(observation_features_hw, "observation")
-    raw_action_keys = list(robot.action_features.keys())
+    raw_action_keys = list(action_features_hw.keys())
     policy_action_names = getattr(policy_config, "action_feature_names", None)
     ordered_action_keys = _resolve_action_key_order(
         list(policy_action_names) if policy_action_names else None,
@@ -301,7 +306,7 @@ def build_rollout_context(
     )
 
     # Validate visual features if no rename_map is active
-    rename_map = cfg.dataset.rename_map if cfg.dataset else {}
+    rename_map = cfg.rename_map
     if not rename_map:
         expected_visuals = {k for k, v in full_config.input_features.items() if v.type == FeatureType.VISUAL}
         provided_visuals = {
@@ -366,7 +371,7 @@ def build_rollout_context(
     if dataset is not None:
         dataset_stats = rename_stats(
             dataset.meta.stats,
-            cfg.dataset.rename_map if cfg.dataset else {},
+            cfg.rename_map,
         )
 
     preprocessor, postprocessor = make_pre_post_processors(
@@ -374,8 +379,8 @@ def build_rollout_context(
         pretrained_path=cfg.policy.pretrained_path,
         dataset_stats=dataset_stats,
         preprocessor_overrides={
-            "device_processor": {"device": cfg.device or getattr(policy_config, "device", "cpu")},
-            "rename_observations_processor": {"rename_map": cfg.dataset.rename_map if cfg.dataset else {}},
+            "device_processor": {"device": cfg.device},
+            "rename_observations_processor": {"rename_map": cfg.rename_map},
         },
     )
 

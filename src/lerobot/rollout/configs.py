@@ -26,6 +26,7 @@ from lerobot.configs import PreTrainedConfig, parser
 from lerobot.configs.dataset import DatasetRecordConfig
 from lerobot.robots.config import RobotConfig
 from lerobot.teleoperators.config import TeleoperatorConfig
+from lerobot.utils.device_utils import auto_select_torch_device, is_torch_device_available
 
 from .inference import InferenceEngineConfig, SyncInferenceConfig
 
@@ -205,6 +206,8 @@ class RolloutConfig:
     # Use vocal synthesis to read events
     play_sounds: bool = True
     resume: bool = False
+    # Rename map for mapping robot/dataset observation keys to policy keys
+    rename_map: dict[str, str] = field(default_factory=dict)
 
     # Torch compile
     use_torch_compile: bool = False
@@ -284,6 +287,31 @@ class RolloutConfig:
             self.policy.pretrained_path = policy_path
         if self.policy is None:
             raise ValueError("--policy.path is required for rollout")
+
+        # --- Task resolution ---
+        # When --dataset.rename_map (or any --dataset.* flag) is passed, draccus
+        # creates a DatasetRecordConfig with single_task="".  If the user set
+        # the task via the top-level --task flag, propagate it so that all
+        # downstream consumers (inference engine, dataset frame builders) see it.
+        if self.dataset is not None and not self.dataset.single_task and self.task:
+            logger.info("Propagating top-level task '%s' to dataset config", self.task)
+            self.dataset.single_task = self.task
+        elif self.dataset is not None and self.dataset.single_task and not self.task:
+            logger.info("Propagating dataset single_task '%s' to top-level task", self.dataset.single_task)
+            self.task = self.dataset.single_task
+
+        # --- Device resolution ---
+        # Resolve device from the policy config when not explicitly set so all
+        # components (policy.to, preprocessor, inference engine) use the same
+        # device string instead of inconsistent fallbacks.
+        if self.device is None or not is_torch_device_available(self.device):
+            resolved = self.policy.device
+            if resolved:
+                self.device = resolved
+                logger.info("Resolved device from policy config: %s", self.device)
+            else:
+                self.device = auto_select_torch_device().type
+                logger.info("No policy config to resolve device from; auto-selected device: %s", self.device)
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:

@@ -14,7 +14,7 @@
 
 """Shared dataset recording configuration used by both ``lerobot-record`` and ``lerobot-rollout``."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -68,8 +68,6 @@ class DatasetRecordConfig:
     # Number of threads per encoder instance. None = auto (codec default).
     # Lower values reduce CPU usage, maps to 'lp' (via svtav1-params) for libsvtav1 and 'threads' for h264/hevc..
     encoder_threads: int | None = None
-    # Rename map for the observation to override the image and state keys
-    rename_map: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.repo_id:

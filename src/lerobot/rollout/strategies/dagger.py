@@ -508,6 +508,10 @@ class DAggerStrategy(RolloutStrategy):
                     dt = time.perf_counter() - loop_start
                     if (sleep_t := control_interval - dt) > 0:
                         precise_sleep(sleep_t)
+                    else:
+                        logging.warning(
+                            f"Record loop is running slower ({1 / dt:.1f} Hz) than the target FPS ({cfg.fps} Hz). Dataset frames might be dropped and robot control might be unstable. Common causes are: 1) Camera FPS not keeping up 2) Policy inference taking too long 3) CPU starvation"
+                        )
 
             finally:
                 logger.info("DAgger continuous control loop ended — pausing engine")
@@ -648,6 +652,10 @@ class DAggerStrategy(RolloutStrategy):
                     dt = time.perf_counter() - loop_start
                     if (sleep_t := control_interval - dt) > 0:
                         precise_sleep(sleep_t)
+                    else:
+                        logging.warning(
+                            f"Record loop is running slower ({1 / dt:.1f} Hz) than the target FPS ({cfg.fps} Hz). Dataset frames might be dropped and robot control might be unstable. Common causes are: 1) Camera FPS not keeping up 2) Policy inference taking too long 3) CPU starvation"
+                        )
 
             finally:
                 logger.info("DAgger corrections-only loop ended — pausing engine")
