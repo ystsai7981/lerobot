@@ -267,7 +267,9 @@ def send_next_action(
     if interp is None:
         return None
 
-    action_dict = {k: interp[i].item() for i, k in enumerate(ordered_keys) if i < len(interp)}
+    if len(interp) != len(ordered_keys):
+        raise ValueError(f"Interpolated tensor length ({len(interp)}) != action keys ({len(ordered_keys)})")
+    action_dict = {k: interp[i].item() for i, k in enumerate(ordered_keys)}
     processed = ctx.processors.robot_action_processor((action_dict, obs_raw))
     ctx.hardware.robot_wrapper.send_action(processed)
     return action_dict

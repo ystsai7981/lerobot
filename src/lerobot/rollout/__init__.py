@@ -46,17 +46,25 @@ from .inference import (
     SyncInferenceEngine,
     create_inference_engine,
 )
-from .ring_buffer import RolloutRingBuffer
-from .robot_wrapper import ThreadSafeRobot
-from .strategies import RolloutStrategy, create_strategy
+from .strategies import (
+    BaseStrategy,
+    DAggerStrategy,
+    HighlightStrategy,
+    RolloutStrategy,
+    SentryStrategy,
+    create_strategy,
+)
 
 __all__ = [
+    "BaseStrategy",
     "BaseStrategyConfig",
     "DAggerKeyboardConfig",
     "DAggerPedalConfig",
+    "DAggerStrategy",
     "DAggerStrategyConfig",
     "DatasetContext",
     "HardwareContext",
+    "HighlightStrategy",
     "HighlightStrategyConfig",
     "InferenceEngine",
     "InferenceEngineConfig",
@@ -66,14 +74,13 @@ __all__ = [
     "RTCInferenceEngine",
     "RolloutConfig",
     "RolloutContext",
-    "RolloutRingBuffer",
     "RolloutStrategy",
     "RolloutStrategyConfig",
     "RuntimeContext",
+    "SentryStrategy",
     "SentryStrategyConfig",
     "SyncInferenceConfig",
     "SyncInferenceEngine",
-    "ThreadSafeRobot",
     "build_rollout_context",
     "create_inference_engine",
     "create_strategy",

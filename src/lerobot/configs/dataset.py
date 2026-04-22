@@ -69,7 +69,12 @@ class DatasetRecordConfig:
     # Lower values reduce CPU usage, maps to 'lp' (via svtav1-params) for libsvtav1 and 'threads' for h264/hevc..
     encoder_threads: int | None = None
 
-    def __post_init__(self) -> None:
+    def stamp_repo_id(self) -> None:
+        """Append a date-time tag to ``repo_id`` so each recording session gets a unique name.
+
+        Must be called explicitly at dataset *creation* time — not on resume,
+        where the existing ``repo_id`` (already stamped) must be preserved.
+        """
         if self.repo_id:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.repo_id = f"{self.repo_id}_{timestamp}"

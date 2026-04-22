@@ -394,6 +394,7 @@ def record(
                     "Dataset names starting with 'eval_' are reserved for policy evaluation. "
                     "lerobot-record is for data collection only. Use lerobot-rollout for policy deployment."
                 )
+            cfg.dataset.stamp_repo_id()
             dataset = LeRobotDataset.create(
                 cfg.dataset.repo_id,
                 cfg.dataset.fps,

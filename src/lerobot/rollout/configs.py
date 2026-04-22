@@ -89,8 +89,8 @@ class HighlightStrategyConfig(RolloutStrategyConfig):
     again.
     """
 
-    ring_buffer_seconds: float = 30.0
-    ring_buffer_max_memory_mb: float = 2048.0
+    ring_buffer_seconds: float = 10.0
+    ring_buffer_max_memory_mb: float = 1024.0
     save_key: str = "s"
     push_key: str = "h"
 

@@ -22,7 +22,7 @@ import os
 import sys
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from threading import Event as ThreadingEvent
+from threading import Event as ThreadingEvent, Lock
 
 from lerobot.common.control_utils import is_headless
 from lerobot.datasets import VideoEncodingManager
@@ -80,6 +80,7 @@ class HighlightStrategy(RolloutStrategy):
         self._push_requested = ThreadingEvent()
         self._push_executor: ThreadPoolExecutor | None = None
         self._pending_push: Future | None = None
+        self._episode_lock = Lock()
 
     def setup(self, ctx: RolloutContext) -> None:
         """Initialise the inference engine, ring buffer, and keyboard listener."""
@@ -168,7 +169,8 @@ class HighlightStrategy(RolloutStrategy):
                                 self._recording_live.set()
                             else:
                                 dataset.add_frame(frame)
-                                dataset.save_episode()
+                                with self._episode_lock:
+                                    dataset.save_episode()
                                 logger.info("Episode saved (total: %d)", dataset.num_episodes)
                                 log_say(
                                     f"Episode {dataset.num_episodes} saved",
@@ -198,7 +200,7 @@ class HighlightStrategy(RolloutStrategy):
                 logger.info("Highlight control loop ended")
                 if self._recording_live.is_set():
                     logger.info("Saving in-progress live episode")
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(Exception), self._episode_lock:
                         dataset.save_episode()
 
     def teardown(self, ctx: RolloutContext) -> None:
@@ -268,12 +270,13 @@ class HighlightStrategy(RolloutStrategy):
 
         def _push():
             try:
-                if safe_push_to_hub(
-                    dataset,
-                    tags=cfg.dataset.tags if cfg.dataset else None,
-                    private=cfg.dataset.private if cfg.dataset else False,
-                ):
-                    logger.info("Background push to hub complete")
+                with self._episode_lock:
+                    if safe_push_to_hub(
+                        dataset,
+                        tags=cfg.dataset.tags if cfg.dataset else None,
+                        private=cfg.dataset.private if cfg.dataset else False,
+                    ):
+                        logger.info("Background push to hub complete")
             except Exception as e:
                 logger.error("Background push failed: %s", e)
 

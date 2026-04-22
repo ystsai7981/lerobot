@@ -693,6 +693,7 @@ class DAggerStrategy(RolloutStrategy):
             }
             # TODO(Steven): either enforce this (meaning all teleop must implement these methods) or
             # user is responsible for moving the teleop to the same position as the robot when starting the correction.
+            # Consider also a method that moves the robot to the teleop smoothly (similar to what we do at HW shutdown).
             # _teleop_smooth_move_to(teleop, robot_pos, duration_s=2.0, fps=50)
 
         elif new_phase == DAggerPhase.CORRECTING:

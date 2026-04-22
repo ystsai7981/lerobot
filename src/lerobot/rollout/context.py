@@ -346,6 +346,12 @@ def build_rollout_context(
                     "names": None,
                 }
 
+            if not cfg.dataset.repo_id.startswith("rollout_"):
+                raise ValueError(
+                    "Dataset names for rollout must start with 'rollout_'. "
+                    "Use --dataset.repo_id=rollout_<name> for policy deployment datasets."
+                )
+            cfg.dataset.stamp_repo_id()
             dataset = LeRobotDataset.create(
                 cfg.dataset.repo_id,
                 cfg.dataset.fps,
