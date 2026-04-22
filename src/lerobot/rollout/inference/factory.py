@@ -68,10 +68,10 @@ class SyncInferenceConfig(InferenceEngineConfig):
 class RTCInferenceConfig(InferenceEngineConfig):
     """Real-Time Chunking: async policy inference in a background thread."""
 
-    # Selecting ``--inference.type=rtc`` means the user wants RTC, so
-    # ``enabled`` defaults to True here (unlike the policy-side RTCConfig
-    # which defaults to False for the ``rtc_config: RTCConfig | None`` path).
-    rtc: RTCConfig = field(default_factory=lambda: RTCConfig(enabled=True))
+    # ``RTCConfig`` is a small dataclass with default-only fields, so eagerly
+    # constructing one here costs nothing and keeps draccus' CLI surface flat
+    # (``--inference.rtc.execution_horizon=...`` etc.).  No need to lazy-init.
+    rtc: RTCConfig = field(default_factory=RTCConfig)
     queue_threshold: int = 30
 
 
