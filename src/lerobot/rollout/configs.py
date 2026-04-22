@@ -289,9 +289,8 @@ class RolloutConfig:
             raise ValueError("--policy.path is required for rollout")
 
         # --- Task resolution ---
-        # When --dataset.rename_map (or any --dataset.* flag) is passed, draccus
-        # creates a DatasetRecordConfig with single_task="".  If the user set
-        # the task via the top-level --task flag, propagate it so that all
+        # When any --dataset.* flag is passed, draccus creates a DatasetRecordConfig with single_task="".
+        # If the user set the task via the top-level --task flag, propagate it so that all
         # downstream consumers (inference engine, dataset frame builders) see it.
         if self.dataset is not None and not self.dataset.single_task and self.task:
             logger.info("Propagating top-level task '%s' to dataset config", self.task)
