@@ -152,11 +152,7 @@ class HighlightStrategy(RolloutStrategy):
                         # NOTE: ``is_set()`` then ``clear()`` is not atomic
                         # against the keyboard thread setting the flag again
                         # in between — but that is benign: we lose at most one
-                        # toggle, processed on the next iteration.  The
-                        # ``_recording_live`` branch below is reached in the
-                        # SAME iteration after ``clear()`` runs, so a frame
-                        # finalised by ``save_episode()`` is never re-added to
-                        # the next episode.
+                        # toggle, processed on the next iteration.
                         if self._save_requested.is_set():
                             self._save_requested.clear()
                             if not self._recording_live.is_set():
@@ -177,6 +173,7 @@ class HighlightStrategy(RolloutStrategy):
                                     play_sounds,
                                 )
                                 self._recording_live.clear()
+                                continue  # frame already consumed — skip ring.append
 
                         if self._push_requested.is_set():
                             self._push_requested.clear()
@@ -192,7 +189,7 @@ class HighlightStrategy(RolloutStrategy):
                     if (sleep_t := control_interval - dt) > 0:
                         precise_sleep(sleep_t)
                     else:
-                        logging.warning(
+                        logger.warning(
                             f"Record loop is running slower ({1 / dt:.1f} Hz) than the target FPS ({cfg.fps} Hz). Dataset frames might be dropped and robot control might be unstable. Common causes are: 1) Camera FPS not keeping up 2) Policy inference taking too long 3) CPU starvation"
                         )
 

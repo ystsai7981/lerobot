@@ -136,11 +136,11 @@ class DAggerStrategyConfig(RolloutStrategyConfig):
     2. **correction** — toggle human correction recording.
     3. **upload** — push dataset to hub on demand (corrections-only mode).
 
-    When ``record_autonomous=True`` (default) both autonomous and correction
-    frames are recorded with size-based episode rotation (same as Sentry)
-    and background uploading.  ``push_to_hub`` is blocked while a correction
-    is in progress.  Set to ``False`` to record only the human-correction
-    windows, where each correction becomes its own episode.
+    When ``record_autonomous=False`` (default) only human-correction windows
+    are recorded — each correction becomes its own episode.  Set to ``True``
+    to record both autonomous and correction frames with size-based episode
+    rotation (same as Sentry) and background uploading.  ``push_to_hub`` is
+    blocked while a correction is in progress.
     """
 
     # Number of correction episodes to collect (corrections-only mode).

@@ -59,7 +59,7 @@ lerobot-rollout \
     --robot.type=so100_follower \
     --robot.port=/dev/ttyACM0 \
     --robot.cameras="{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" \
-    --dataset.repo_id=${HF_USER}/eval_data \
+    --dataset.repo_id=${HF_USER}/rollout_eval_data \
     --dataset.single_task="Put lego brick into the box" \
     --duration=3600
 ```
@@ -84,7 +84,7 @@ lerobot-rollout \
     --policy.path=${HF_USER}/my_policy \
     --robot.type=koch_follower \
     --robot.port=/dev/ttyACM0 \
-    --dataset.repo_id=${HF_USER}/highlight_data \
+    --dataset.repo_id=${HF_USER}/rollout_highlight_data \
     --dataset.single_task="Pick up the red cube"
 ```
 
@@ -118,7 +118,7 @@ lerobot-rollout \
     --policy.path=outputs/pretrain/checkpoints/last/pretrained_model \
     --robot.type=bi_openarm_follower \
     --teleop.type=openarm_mini \
-    --dataset.repo_id=${HF_USER}/hil_data \
+    --dataset.repo_id=${HF_USER}/rollout_hil_data \
     --dataset.single_task="Fold the T-shirt"
 ```
 
@@ -134,7 +134,7 @@ lerobot-rollout \
     --robot.port=/dev/ttyACM0 \
     --teleop.type=so101_leader \
     --teleop.port=/dev/ttyACM1 \
-    --dataset.repo_id=${HF_USER}/dagger_data \
+    --dataset.repo_id=${HF_USER}/rollout_dagger_data \
     --dataset.single_task="Grasp the block"
 ```
 

@@ -63,7 +63,7 @@ Usage examples
         --inference.type=rtc \\
         --robot.type=so100_follower \\
         --robot.port=/dev/ttyACM0 \\
-        --dataset.repo_id=user/sentry-data \\
+        --dataset.repo_id=user/rollout_sentry_data \\
         --dataset.single_task="patrol" --duration=3600
 
     # Highlight mode — ring buffer, press 's' to save, 'h' to push
@@ -73,7 +73,7 @@ Usage examples
         --policy.path=lerobot/act_koch_real \\
         --robot.type=koch_follower \\
         --robot.port=/dev/ttyACM0 \\
-        --dataset.repo_id=user/highlight-data \\
+        --dataset.repo_id=user/rollout_highlight_data \\
         --dataset.single_task="pick up cube"
 
     # DAgger mode — human-in-the-loop corrections only
@@ -83,7 +83,7 @@ Usage examples
         --policy.path=outputs/pretrain/checkpoints/last/pretrained_model \\
         --robot.type=bi_openarm_follower \\
         --teleop.type=openarm_mini \\
-        --dataset.repo_id=user/hil-data \\
+        --dataset.repo_id=user/rollout_hil_data \\
         --dataset.single_task="Fold the T-shirt"
 
     # DAgger mode — continuous recording with RTC inference
@@ -98,7 +98,7 @@ Usage examples
         --robot.port=/dev/ttyACM0 \\
         --teleop.type=so101_leader \\
         --teleop.port=/dev/ttyACM1 \\
-        --dataset.repo_id=user/dagger-rtc-data \\
+        --dataset.repo_id=user/rollout_dagger_rtc_data \\
         --dataset.single_task="Grasp the block"
 
     # With Rerun visualization and torch.compile
@@ -117,7 +117,7 @@ Usage examples
         --policy.path=user/my_policy \\
         --robot.type=so100_follower \\
         --robot.port=/dev/ttyACM0 \\
-        --dataset.repo_id=user/sentry-data \\
+        --dataset.repo_id=user/rollout_sentry_data \\
         --dataset.single_task="patrol" \\
         --resume=true
 """
