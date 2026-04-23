@@ -16,7 +16,7 @@ import datetime as dt
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import draccus
 from huggingface_hub import hf_hub_download
@@ -58,7 +58,7 @@ class TrainPipelineConfig(HubMixin):
     batch_size: int = 8
     prefetch_factor: int = 4
     persistent_workers: bool = True
-    profile_mode: str = "off"
+    profile_mode: Literal["off", "summary", "trace"] = "off"
     profile_output_dir: Path | None = None
     steps: int = 100_000
     eval_freq: int = 20_000

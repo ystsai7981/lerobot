@@ -33,7 +33,6 @@ Usage (CI):
 from __future__ import annotations
 
 import argparse
-import contextlib
 import hashlib
 import json
 import logging
@@ -53,7 +52,7 @@ from typing import Any
 import torch
 from huggingface_hub import CommitOperationAdd, HfApi
 from huggingface_hub.errors import HfHubHTTPError
-from torch.utils.data._utils.collate import default_collate
+from torch.utils.data import default_collate
 
 logger = logging.getLogger(__name__)
 
@@ -305,11 +304,10 @@ def _get_profiler_device_time_us(event: Any) -> float | None:
 
 
 def _write_profiler_table(profiler: Any, path: Path, *, sort_by: str, row_limit: int = 40) -> None:
-    # The profiler may not have recorded any events for this sort key when the
-    # schedule window lands outside the active steps — skip silently rather
-    # than crashing the whole artifact-writer pass.
-    with contextlib.suppress(Exception):
+    try:
         path.write_text(profiler.key_averages().table(sort_by=sort_by, row_limit=row_limit))
+    except Exception:
+        logger.debug("Could not write profiler table for sort_by=%s", sort_by, exc_info=True)
 
 
 def write_deterministic_forward_artifacts(
@@ -324,7 +322,9 @@ def write_deterministic_forward_artifacts(
     """Run a seed-controlled single forward pass and dump a stable fingerprint
     (loss/output tensor hashes + op counts) for regression detection. Keeps
     the caller-selected module mode so ACT-with-VAE-style policies that only
-    materialize their full forward outputs in `train()` still match."""
+    materialize their full forward outputs in `train()` still match. Models
+    with stochastic train-mode layers still rely on the seeded RNG for stable
+    fingerprints."""
     if len(dataset) == 0:
         raise ValueError("Cannot build a reference batch from an empty dataset.")
     indices = [i % len(dataset) for i in range(batch_size)]
@@ -701,9 +701,12 @@ def main() -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     repo_id = args.results_repo if "/" in args.results_repo else f"{args.hub_org}/{args.results_repo}"
-    git_exe = shutil.which("git") or (_ for _ in ()).throw(RuntimeError("git not found in PATH"))
+    git_exe = shutil.which("git")
+    if not git_exe:
+        raise RuntimeError("git not found in PATH")
     git_commit = args.git_commit or subprocess.check_output([git_exe, "rev-parse", "HEAD"], text=True).strip()
     pr_number = int(args.pr_number) if str(args.pr_number).strip() else None
+    exit_code = 0
 
     for policy in selected:
         run_id = f"{_utc_timestamp_slug()}__{policy}"
@@ -717,6 +720,8 @@ def main() -> int:
 
         (run_dir / "stdout.txt").write_text(result.stdout)
         (run_dir / "stderr.txt").write_text(result.stderr)
+        if result.returncode != 0:
+            exit_code = 1
 
         paths, urls, upload_list, row_in_repo = build_artifact_index(
             repo_id=repo_id, run_dir=run_dir, policy_name=policy, run_id=run_id
@@ -771,7 +776,7 @@ def main() -> int:
 
         print(json.dumps(row, indent=2, sort_keys=True))
 
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

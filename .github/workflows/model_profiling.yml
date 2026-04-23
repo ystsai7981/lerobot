@@ -20,7 +20,6 @@ on:
   pull_request:
     branches:
       - main
-      - feat/libero-benchmark
     paths:
       - .github/workflows/model_profiling.yml
       - src/lerobot/configs/train.py
