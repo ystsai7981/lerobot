@@ -109,6 +109,21 @@ def _normalize_prev_actions_length(prev_actions: torch.Tensor, target_steps: int
     return padded
 
 
+def _get_current_raw_state(
+    relative_step: RelativeActionsProcessorStep,
+    fallback_state: torch.Tensor | None,
+) -> torch.Tensor | None:
+    """Return the current raw state cached by the relative-action step.
+
+    ``RelativeActionsProcessorStep`` caches the observation state before any
+    observation normalization. Re-anchoring RTC leftovers must use that raw
+    state rather than the normalized observation that the policy consumes.
+    """
+    if relative_step._last_state is not None:
+        return relative_step._last_state
+    return fallback_state
+
+
 # ---------------------------------------------------------------------------
 # RTCInferenceEngine
 # ---------------------------------------------------------------------------
@@ -318,7 +333,9 @@ class RTCInferenceEngine(InferenceEngine):
                         preprocessed = self._preprocessor(obs_batch)
 
                         if prev_actions is not None and self._relative_step is not None:
-                            state_tensor = preprocessed.get(OBS_STATE)
+                            state_tensor = _get_current_raw_state(
+                                self._relative_step, obs_batch.get(OBS_STATE)
+                            )
                             if state_tensor is not None:
                                 prev_abs = queue.get_processed_left_over()
                                 if prev_abs is not None and prev_abs.numel() > 0:
