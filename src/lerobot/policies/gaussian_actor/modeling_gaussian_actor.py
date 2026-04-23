@@ -29,22 +29,29 @@ from lerobot.utils.constants import ACTION, OBS_ENV_STATE, OBS_STATE
 
 from ..pretrained import PreTrainedPolicy
 from ..utils import get_device_from_parameters
-from .configuration_sac import SACConfig, is_image_feature
+from .configuration_gaussian_actor import GaussianActorConfig, is_image_feature
 
 DISCRETE_DIMENSION_INDEX = -1  # Gripper is always the last dimension
 
 
-class SACPolicy(
+class GaussianActorPolicy(
     PreTrainedPolicy,
 ):
-    """SAC policy."""
+    """Gaussian actor + observation encoder.
 
-    config_class = SACConfig
-    name = "sac"
+    Policy-side ``nn.Module`` used by SAC and related maximum-entropy continuous
+    control algorithms. It owns the actor network (``Policy``) and the observation
+    encoder (``GaussianActorObservationEncoder``); the critics, temperature, and
+    Bellman-update logic live on the algorithm side
+    (see ``lerobot.rl.algorithms.sac``).
+    """
+
+    config_class = GaussianActorConfig
+    name = "gaussian_actor"
 
     def __init__(
         self,
-        config: SACConfig | None = None,
+        config: GaussianActorConfig | None = None,
     ):
         super().__init__(config)
         config.validate_features()
@@ -73,7 +80,9 @@ class SACPolicy(
     @torch.no_grad()
     def predict_action_chunk(self, batch: dict[str, Tensor]) -> Tensor:
         """Predict a chunk of actions given environment observations."""
-        raise NotImplementedError("SACPolicy does not support action chunking. It returns single actions!")
+        raise NotImplementedError(
+            "GaussianActorPolicy does not support action chunking. It returns single actions!"
+        )
 
     @torch.no_grad()
     def select_action(self, batch: dict[str, Tensor]) -> Tensor:
@@ -133,9 +142,9 @@ class SACPolicy(
     def _init_encoders(self):
         """Initialize shared or separate encoders for actor and critic."""
         self.shared_encoder = self.config.shared_encoder
-        self.encoder_critic = SACObservationEncoder(self.config)
+        self.encoder_critic = GaussianActorObservationEncoder(self.config)
         self.encoder_actor = (
-            self.encoder_critic if self.shared_encoder else SACObservationEncoder(self.config)
+            self.encoder_critic if self.shared_encoder else GaussianActorObservationEncoder(self.config)
         )
 
     def _init_actor(self, continuous_action_dim):
@@ -155,10 +164,10 @@ class SACPolicy(
             self.target_entropy = -np.prod(dim) / 2
 
 
-class SACObservationEncoder(nn.Module):
+class GaussianActorObservationEncoder(nn.Module):
     """Encode image and/or state vector observations."""
 
-    def __init__(self, config: SACConfig) -> None:
+    def __init__(self, config: GaussianActorConfig) -> None:
         super().__init__()
         self.config = config
         self._init_image_layers()
@@ -411,7 +420,7 @@ class DiscreteCritic(nn.Module):
 class Policy(nn.Module):
     def __init__(
         self,
-        encoder: SACObservationEncoder,
+        encoder: GaussianActorObservationEncoder,
         network: nn.Module,
         action_dim: int,
         std_min: float = -5,
@@ -422,7 +431,7 @@ class Policy(nn.Module):
         encoder_is_shared: bool = False,
     ):
         super().__init__()
-        self.encoder: SACObservationEncoder = encoder
+        self.encoder: GaussianActorObservationEncoder = encoder
         self.network = network
         self.action_dim = action_dim
         self.std_min = std_min
@@ -496,7 +505,7 @@ class Policy(nn.Module):
 
 
 class DefaultImageEncoder(nn.Module):
-    def __init__(self, config: SACConfig):
+    def __init__(self, config: GaussianActorConfig):
         super().__init__()
         image_key = next(key for key in config.input_features if is_image_feature(key))
         self.image_enc_layers = nn.Sequential(
@@ -542,12 +551,12 @@ def freeze_image_encoder(image_encoder: nn.Module):
 
 
 class PretrainedImageEncoder(nn.Module):
-    def __init__(self, config: SACConfig):
+    def __init__(self, config: GaussianActorConfig):
         super().__init__()
 
         self.image_enc_layers, self.image_enc_out_shape = self._load_pretrained_vision_encoder(config)
 
-    def _load_pretrained_vision_encoder(self, config: SACConfig):
+    def _load_pretrained_vision_encoder(self, config: GaussianActorConfig):
         """Set up CNN encoder"""
         from transformers import AutoModel
 

@@ -251,7 +251,7 @@ def act_with_policy(
     logging.info("make_policy")
 
     ### Instantiate the policy in both the actor and learner processes
-    ### To avoid sending a SACPolicy object through the port, we create a policy instance
+    ### To avoid sending a policy object through the port, we create a policy instance
     ### on both sides, the learner sends the updated parameters every n steps to update the actor's parameters
     policy = make_policy(
         cfg=cfg.policy,

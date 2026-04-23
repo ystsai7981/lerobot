@@ -17,19 +17,19 @@
 import pytest
 
 from lerobot.configs.types import FeatureType, NormalizationMode, PolicyFeature
-from lerobot.policies.sac.configuration_sac import (
+from lerobot.policies.gaussian_actor.configuration_gaussian_actor import (
     ActorLearnerConfig,
     ActorNetworkConfig,
     ConcurrencyConfig,
     CriticNetworkConfig,
+    GaussianActorConfig,
     PolicyConfig,
-    SACConfig,
 )
 from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_STATE
 
 
-def test_sac_config_default_initialization():
-    config = SACConfig()
+def test_gaussian_actor_config_default_initialization():
+    config = GaussianActorConfig()
 
     assert config.normalization_mapping == {
         "VISUAL": NormalizationMode.MEAN_STD,
@@ -175,8 +175,8 @@ def test_concurrency_config():
     assert config.learner == "threads"
 
 
-def test_sac_config_custom_initialization():
-    config = SACConfig(
+def test_gaussian_actor_config_custom_initialization():
+    config = GaussianActorConfig(
         device="cpu",
         discount=0.95,
         temperature_init=0.5,
@@ -190,7 +190,7 @@ def test_sac_config_custom_initialization():
 
 
 def test_validate_features():
-    config = SACConfig(
+    config = GaussianActorConfig(
         input_features={OBS_STATE: PolicyFeature(type=FeatureType.STATE, shape=(10,))},
         output_features={ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(3,))},
     )
@@ -198,7 +198,7 @@ def test_validate_features():
 
 
 def test_validate_features_missing_observation():
-    config = SACConfig(
+    config = GaussianActorConfig(
         input_features={"wrong_key": PolicyFeature(type=FeatureType.STATE, shape=(10,))},
         output_features={ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(3,))},
     )
@@ -209,7 +209,7 @@ def test_validate_features_missing_observation():
 
 
 def test_validate_features_missing_action():
-    config = SACConfig(
+    config = GaussianActorConfig(
         input_features={OBS_STATE: PolicyFeature(type=FeatureType.STATE, shape=(10,))},
         output_features={"wrong_key": PolicyFeature(type=FeatureType.ACTION, shape=(3,))},
     )

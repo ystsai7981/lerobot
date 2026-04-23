@@ -7,9 +7,9 @@ import torch
 
 from lerobot.datasets import LeRobotDataset
 from lerobot.envs.configs import HILSerlProcessorConfig, HILSerlRobotEnvConfig
-from lerobot.policies import SACConfig
-from lerobot.policies.sac.modeling_sac import SACPolicy
-from lerobot.policies.sac.reward_model.modeling_classifier import Classifier
+from lerobot.policies import GaussianActorConfig
+from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
+from lerobot.policies.gaussian_actor.reward_model.modeling_classifier import Classifier
 from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig
 from lerobot.rl.buffer import ReplayBuffer
 from lerobot.rl.gym_manipulator import make_robot_env
@@ -28,7 +28,7 @@ def run_learner(
     transitions_queue: mp.Queue,
     parameters_queue: mp.Queue,
     shutdown_event: mp.Event,
-    policy_learner: SACPolicy,
+    policy_learner: GaussianActorPolicy,
     online_buffer: ReplayBuffer,
     offline_buffer: ReplayBuffer,
     lr: float = 3e-4,
@@ -116,7 +116,7 @@ def run_actor(
     transitions_queue: mp.Queue,
     parameters_queue: mp.Queue,
     shutdown_event: mp.Event,
-    policy_actor: SACPolicy,
+    policy_actor: GaussianActorPolicy,
     reward_classifier: Classifier,
     env_cfg: HILSerlRobotEnvConfig,
     device: torch.device = "mps",
@@ -264,14 +264,14 @@ def main():
     action_features = hw_to_dataset_features(env.robot.action_features, "action")
 
     # Create SAC policy for action selection
-    policy_cfg = SACConfig(
+    policy_cfg = GaussianActorConfig(
         device=device,
         input_features=obs_features,
         output_features=action_features,
     )
 
-    policy_actor = SACPolicy(policy_cfg)
-    policy_learner = SACPolicy(policy_cfg)
+    policy_actor = GaussianActorPolicy(policy_cfg)
+    policy_learner = GaussianActorPolicy(policy_cfg)
 
     demonstrations_repo_id = "lerobot/example_hil_serl_dataset"
     offline_dataset = LeRobotDataset(repo_id=demonstrations_repo_id)

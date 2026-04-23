@@ -820,10 +820,10 @@ The LeRobot system uses a distributed actor-learner architecture for training. T
 
 Create a training configuration file (example available [here](https://huggingface.co/datasets/lerobot/config_examples/resolve/main/rl/train_config.json)). The training config is based on the main `TrainRLServerPipelineConfig` class in `lerobot/configs/train.py`.
 
-1. Configure the policy settings (`type="sac"`, `device`, etc.)
+1. Configure the policy settings (`type="gaussian_actor"`, `device`, etc.)
 2. Set `dataset` to your cropped dataset
 3. Configure environment settings with crop parameters
-4. Check the other parameters related to SAC in [configuration_sac.py](https://github.com/huggingface/lerobot/blob/main/src/lerobot/policies/sac/configuration_sac.py#L79).
+4. Check the other parameters related to the Gaussian Actor in [configuration_gaussian_actor.py](https://github.com/huggingface/lerobot/blob/main/src/lerobot/policies/gaussian_actor/configuration_gaussian_actor.py#L79).
 5. Verify that the `policy` config is correct with the right `input_features` and `output_features` for your task.
 
 **Starting the Learner**

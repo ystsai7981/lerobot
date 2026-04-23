@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .configuration_sac import SACConfig
-from .modeling_sac import SACPolicy
-from .processor_sac import make_sac_pre_post_processors
+from .configuration_gaussian_actor import GaussianActorConfig
+from .modeling_gaussian_actor import GaussianActorPolicy
+from .processor_gaussian_actor import make_gaussian_actor_pre_post_processors
 
-__all__ = ["SACConfig", "SACPolicy", "make_sac_pre_post_processors"]
+__all__ = ["GaussianActorConfig", "GaussianActorPolicy", "make_gaussian_actor_pre_post_processors"]

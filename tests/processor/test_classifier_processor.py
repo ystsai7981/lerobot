@@ -21,8 +21,8 @@ import pytest
 import torch
 
 from lerobot.configs.types import FeatureType, NormalizationMode, PolicyFeature
-from lerobot.policies.sac.reward_model.configuration_classifier import RewardClassifierConfig
-from lerobot.policies.sac.reward_model.processor_classifier import make_classifier_processor
+from lerobot.policies.gaussian_actor.reward_model.configuration_classifier import RewardClassifierConfig
+from lerobot.policies.gaussian_actor.reward_model.processor_classifier import make_classifier_processor
 from lerobot.processor import (
     DataProcessorPipeline,
     DeviceProcessorStep,

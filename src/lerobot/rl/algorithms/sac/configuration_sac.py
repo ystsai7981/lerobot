@@ -19,7 +19,10 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from lerobot.policies.sac.configuration_sac import CriticNetworkConfig, SACConfig
+from lerobot.policies.gaussian_actor.configuration_gaussian_actor import (
+    CriticNetworkConfig,
+    GaussianActorConfig,
+)
 from lerobot.rl.algorithms.configs import RLAlgorithmConfig
 
 if TYPE_CHECKING:
@@ -32,7 +35,7 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
     """SAC algorithm hyperparameters."""
 
     # Policy config
-    sac_config: SACConfig
+    sac_config: GaussianActorConfig
 
     # Optimizer learning rates
     actor_lr: float = 3e-4
@@ -59,7 +62,7 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
     grad_clip_norm: float = 40.0
 
     @classmethod
-    def from_policy_config(cls, policy_cfg: SACConfig) -> SACAlgorithmConfig:
+    def from_policy_config(cls, policy_cfg: GaussianActorConfig) -> SACAlgorithmConfig:
         """Build an algorithm config by copying hyperparameters from the policy config."""
         return cls(
             actor_lr=policy_cfg.actor_lr,

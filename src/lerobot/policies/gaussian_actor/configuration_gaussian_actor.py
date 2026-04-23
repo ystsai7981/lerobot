@@ -75,18 +75,19 @@ class PolicyConfig:
     init_final: float = 0.05
 
 
-@PreTrainedConfig.register_subclass("sac")
+@PreTrainedConfig.register_subclass("gaussian_actor")
 @dataclass
-class SACConfig(PreTrainedConfig):
-    """Soft Actor-Critic (SAC) configuration.
+class GaussianActorConfig(PreTrainedConfig):
+    """Gaussian actor configuration.
 
-    SAC is an off-policy actor-critic deep RL algorithm based on the maximum entropy
-    reinforcement learning framework. It learns a policy and a Q-function simultaneously
-    using experience collected from the environment.
+    This configures the policy-side (actor + observation encoder) of a Gaussian
+    policy, as used by SAC and related maximum-entropy continuous-control algorithms.
+    By default the actor output is a tanh-squashed diagonal Gaussian
+    (``TanhMultivariateNormalDiag``); the tanh squashing can be disabled via
+    ``policy_kwargs.use_tanh_squash``. The critics, temperature, and Bellman-update
+    logic live on the algorithm side (see ``lerobot.rl.algorithms.sac``).
 
-    This configuration class contains all the parameters needed to define a SAC agent,
-    including network architectures, optimization settings, and algorithm-specific
-    hyperparameters.
+    CLI: ``--policy.type=gaussian_actor``.
     """
 
     # Mapping of feature types to normalization modes

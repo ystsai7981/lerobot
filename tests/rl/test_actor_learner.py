@@ -28,7 +28,7 @@ from torch.multiprocessing import Event, Queue
 
 from lerobot.configs.train import TrainRLServerPipelineConfig
 from lerobot.configs.types import FeatureType, PolicyFeature
-from lerobot.policies.sac.configuration_sac import SACConfig
+from lerobot.policies.gaussian_actor.configuration_gaussian_actor import GaussianActorConfig
 from lerobot.utils.constants import ACTION, OBS_STATE, OBS_STR
 from lerobot.utils.transition import Transition
 from tests.utils import skip_if_package_missing
@@ -81,7 +81,7 @@ def cfg():
 
     port = find_free_port()
 
-    policy_cfg = SACConfig()
+    policy_cfg = GaussianActorConfig()
     policy_cfg.actor_learner_config.learner_host = "127.0.0.1"
     policy_cfg.actor_learner_config.learner_port = port
     policy_cfg.concurrency.actor = "threads"
@@ -312,7 +312,7 @@ def test_learner_algorithm_wiring():
     """Verify that make_algorithm constructs an SACAlgorithm from config,
     make_optimizers_and_scheduler() creates the right optimizers, update() works, and
     get_weights() output is serializable."""
-    from lerobot.policies.sac.modeling_sac import SACPolicy
+    from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
     from lerobot.rl.algorithms.factory import make_algorithm
     from lerobot.rl.algorithms.sac import SACAlgorithm
     from lerobot.transport.utils import state_to_bytes
@@ -320,7 +320,7 @@ def test_learner_algorithm_wiring():
     state_dim = 10
     action_dim = 6
 
-    sac_cfg = SACConfig(
+    sac_cfg = GaussianActorConfig(
         input_features={OBS_STATE: PolicyFeature(type=FeatureType.STATE, shape=(state_dim,))},
         output_features={ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(action_dim,))},
         dataset_stats={
@@ -331,7 +331,7 @@ def test_learner_algorithm_wiring():
     )
     sac_cfg.validate_features()
 
-    policy = SACPolicy(config=sac_cfg)
+    policy = GaussianActorPolicy(config=sac_cfg)
     policy.train()
 
     algorithm = make_algorithm(policy=policy, policy_cfg=sac_cfg, algorithm_name="sac")
@@ -399,13 +399,13 @@ def test_learner_algorithm_wiring():
 def test_initial_and_periodic_weight_push_consistency():
     """Both initial and periodic weight pushes should use algorithm.get_weights()
     and produce identical structures."""
-    from lerobot.policies.sac.modeling_sac import SACPolicy
+    from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
     from lerobot.rl.algorithms.factory import make_algorithm
     from lerobot.transport.utils import bytes_to_state_dict, state_to_bytes
 
     state_dim = 10
     action_dim = 6
-    sac_cfg = SACConfig(
+    sac_cfg = GaussianActorConfig(
         input_features={OBS_STATE: PolicyFeature(type=FeatureType.STATE, shape=(state_dim,))},
         output_features={ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(action_dim,))},
         dataset_stats={
@@ -416,7 +416,7 @@ def test_initial_and_periodic_weight_push_consistency():
     )
     sac_cfg.validate_features()
 
-    policy = SACPolicy(config=sac_cfg)
+    policy = GaussianActorPolicy(config=sac_cfg)
     policy.train()
     algorithm = make_algorithm(policy=policy, policy_cfg=sac_cfg, algorithm_name="sac")
     algorithm.make_optimizers_and_scheduler()
@@ -437,13 +437,13 @@ def test_initial_and_periodic_weight_push_consistency():
 
 def test_actor_side_algorithm_select_action_and_load_weights():
     """Simulate actor: create algorithm without optimizers, select_action, load_weights."""
-    from lerobot.policies.sac.modeling_sac import SACPolicy
+    from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
     from lerobot.rl.algorithms.factory import make_algorithm
     from lerobot.rl.algorithms.sac import SACAlgorithm
 
     state_dim = 10
     action_dim = 6
-    sac_cfg = SACConfig(
+    sac_cfg = GaussianActorConfig(
         input_features={OBS_STATE: PolicyFeature(type=FeatureType.STATE, shape=(state_dim,))},
         output_features={ACTION: PolicyFeature(type=FeatureType.ACTION, shape=(action_dim,))},
         dataset_stats={
@@ -455,7 +455,7 @@ def test_actor_side_algorithm_select_action_and_load_weights():
     sac_cfg.validate_features()
 
     # Actor side: no optimizers
-    policy = SACPolicy(config=sac_cfg)
+    policy = GaussianActorPolicy(config=sac_cfg)
     policy.eval()
     algorithm = make_algorithm(policy=policy, policy_cfg=sac_cfg, algorithm_name="sac")
     assert isinstance(algorithm, SACAlgorithm)

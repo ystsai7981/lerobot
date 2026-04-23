@@ -26,12 +26,12 @@ import torch.nn.functional as F  # noqa: N812
 from torch import Tensor
 from torch.optim import Optimizer
 
-from lerobot.policies.sac.modeling_sac import (
+from lerobot.policies.gaussian_actor.modeling_gaussian_actor import (
     DISCRETE_DIMENSION_INDEX,
     MLP,
     DiscreteCritic,
-    SACObservationEncoder,
-    SACPolicy,
+    GaussianActorObservationEncoder,
+    GaussianActorPolicy,
     orthogonal_init,
 )
 from lerobot.policies.utils import get_device_from_parameters
@@ -50,7 +50,7 @@ class SACAlgorithm(RLAlgorithm):
 
     def __init__(
         self,
-        policy: SACPolicy,
+        policy: GaussianActorPolicy,
         config: SACAlgorithmConfig,
     ):
         self.config = config
@@ -100,7 +100,9 @@ class SACAlgorithm(RLAlgorithm):
             self.discrete_critic, self.discrete_critic_target = self._init_discrete_critics(encoder)
             self.policy.discrete_critic = self.discrete_critic
 
-    def _init_discrete_critics(self, encoder: SACObservationEncoder) -> tuple[DiscreteCritic, DiscreteCritic]:
+    def _init_discrete_critics(
+        self, encoder: GaussianActorObservationEncoder
+    ) -> tuple[DiscreteCritic, DiscreteCritic]:
         """Build discrete critic ensemble and target networks."""
         discrete_critic = DiscreteCritic(
             encoder=encoder,
@@ -557,7 +559,7 @@ class CriticEnsemble(nn.Module):
     CriticEnsemble wraps multiple CriticHead modules into an ensemble.
 
     Args:
-        encoder (SACObservationEncoder): encoder for observations.
+        encoder (GaussianActorObservationEncoder): encoder for observations.
         ensemble (List[CriticHead]): list of critic heads.
         init_final (float | None): optional initializer scale for final layers.
 
@@ -566,7 +568,7 @@ class CriticEnsemble(nn.Module):
 
     def __init__(
         self,
-        encoder: SACObservationEncoder,
+        encoder: GaussianActorObservationEncoder,
         ensemble: list[CriticHead],
         init_final: float | None = None,
     ):
