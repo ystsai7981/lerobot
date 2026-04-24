@@ -70,7 +70,7 @@ from lerobot.common.wandb_utils import WandBLogger
 from lerobot.configs import parser
 from lerobot.configs.train import TrainRLServerPipelineConfig
 from lerobot.datasets import LeRobotDataset, make_dataset
-from lerobot.policies import make_policy
+from lerobot.policies import make_policy, make_pre_post_processors
 from lerobot.policies.sac.modeling_sac import SACPolicy
 from lerobot.robots import so_follower  # noqa: F401
 from lerobot.teleoperators import gamepad, so_leader  # noqa: F401
@@ -317,6 +317,11 @@ def add_actor_information_and_train(
 
     policy.train()
 
+    preprocessor, _postprocessor = make_pre_post_processors(
+        policy_cfg=cfg.policy,
+        dataset_stats=cfg.policy.dataset_stats,
+    )
+
     push_actor_policy_to_queue(parameters_queue=parameters_queue, policy=policy)
 
     last_time_policy_pushed = time.time()
@@ -405,8 +410,8 @@ def add_actor_information_and_train(
 
             actions = batch[ACTION]
             rewards = batch["reward"]
-            observations = batch["state"]
-            next_observations = batch["next_state"]
+            observations = preprocessor.process_observation(batch["state"])
+            next_observations = preprocessor.process_observation(batch["next_state"])
             done = batch["done"]
             check_nan_in_transition(observations=observations, actions=actions, next_state=next_observations)
 
@@ -463,8 +468,8 @@ def add_actor_information_and_train(
 
         actions = batch[ACTION]
         rewards = batch["reward"]
-        observations = batch["state"]
-        next_observations = batch["next_state"]
+        observations = preprocessor.process_observation(batch["state"])
+        next_observations = preprocessor.process_observation(batch["next_state"])
         done = batch["done"]
 
         check_nan_in_transition(observations=observations, actions=actions, next_state=next_observations)
