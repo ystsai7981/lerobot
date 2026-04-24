@@ -47,8 +47,12 @@ class BaseStrategy(RolloutStrategy):
         interpolator = self._interpolator
 
         control_interval = interpolator.get_control_interval(cfg.fps)
+        observation_interval = 1.0 / cfg.fps
 
         start_time = time.perf_counter()
+        next_observation_time = 0.0
+        obs = None
+        obs_processed = None
         engine.resume()
         logger.info("Base strategy control loop started")
 
@@ -59,11 +63,16 @@ class BaseStrategy(RolloutStrategy):
                 logger.info("Duration limit reached (%.0fs)", cfg.duration)
                 break
 
-            obs = robot.get_observation()
-            obs_processed = ctx.processors.robot_observation_processor(obs)
-            engine.notify_observation(obs_processed)
+            if obs is None or loop_start >= next_observation_time:
+                obs = robot.get_observation()
+                obs_processed = ctx.processors.robot_observation_processor(obs)
+                engine.notify_observation(obs_processed)
+                next_observation_time = loop_start + observation_interval
 
             if self._handle_warmup(cfg.use_torch_compile, loop_start, control_interval):
+                continue
+
+            if obs_processed is None:
                 continue
 
             action_dict = send_next_action(obs_processed, obs, ctx, interpolator)
