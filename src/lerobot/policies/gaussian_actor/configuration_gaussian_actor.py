@@ -136,80 +136,41 @@ class GaussianActorConfig(PreTrainedConfig):
     # Dimension of the image embedding pooling
     image_embedding_pooling_dim: int = 8
 
-    # Training parameter
-    # Number of steps for online training
-    online_steps: int = 1000000
-    # Capacity of the online replay buffer
-    online_buffer_capacity: int = 100000
-    # Capacity of the offline replay buffer
-    offline_buffer_capacity: int = 100000
-    # Whether to use asynchronous prefetching for the buffers
-    async_prefetch: bool = False
-    # Number of steps before learning starts
-    online_step_before_learning: int = 100
-    # Frequency of policy updates
-    policy_update_freq: int = 1
-
-    # SAC algorithm parameters
-    # Discount factor for the SAC algorithm
-    discount: float = 0.99
-    # Initial temperature value
-    temperature_init: float = 1.0
-    # Number of critics in the ensemble
-    num_critics: int = 2
-    # Number of subsampled critics for training
-    num_subsample_critics: int | None = None
-    # Learning rate for the critic network
-    critic_lr: float = 3e-4
-    # Learning rate for the actor network
-    actor_lr: float = 3e-4
-    # Learning rate for the temperature parameter
-    temperature_lr: float = 3e-4
-    # Weight for the critic target update
-    critic_target_update_weight: float = 0.005
-    # Update-to-data ratio for the UTD algorithm (If you want enable utd_ratio, you need to set it to >1)
-    utd_ratio: int = 1
+    # Encoder architecture
     # Hidden dimension size for the state encoder
     state_encoder_hidden_dim: int = 256
     # Dimension of the latent space
     latent_dim: int = 256
-    # Target entropy for the SAC algorithm
-    target_entropy: float | None = None
-    # Whether to use backup entropy for the SAC algorithm
-    use_backup_entropy: bool = True
-    # Gradient clipping norm for the SAC algorithm
-    grad_clip_norm: float = 40.0
 
-    # Network configuration
-    # Configuration for the critic network architecture
-    critic_network_kwargs: CriticNetworkConfig = field(default_factory=CriticNetworkConfig)
-    # Configuration for the actor network architecture
-    actor_network_kwargs: ActorNetworkConfig = field(default_factory=ActorNetworkConfig)
-    # Configuration for the policy parameters
-    policy_kwargs: PolicyConfig = field(default_factory=PolicyConfig)
-    # Configuration for the discrete critic network
-    discrete_critic_network_kwargs: CriticNetworkConfig = field(default_factory=CriticNetworkConfig)
-    # Configuration for actor-learner architecture
+    # Online training (TODO(Khalil): relocate to TrainRLServerPipelineConfig)
+    online_steps: int = 1000000
+    online_buffer_capacity: int = 100000
+    offline_buffer_capacity: int = 100000
+    async_prefetch: bool = False
+    online_step_before_learning: int = 100
+
+    # Actor-learner transport (TODO(Khalil): relocate to TrainRLServerPipelineConfig).
     actor_learner_config: ActorLearnerConfig = field(default_factory=ActorLearnerConfig)
-    # Configuration for concurrency settings (you can use threads or processes for the actor and learner)
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
 
-    # Optimizations
-    # torch.compile is currently disabled by default due to known issues with the SAC
-    # critic ensemble and shared encoder.
-    use_torch_compile: bool = False
+    # Network architecture
+    # Actor network
+    actor_network_kwargs: ActorNetworkConfig = field(default_factory=ActorNetworkConfig)
+    # Gaussian head parameters
+    policy_kwargs: PolicyConfig = field(default_factory=PolicyConfig)
+    # Discrete critic
+    discrete_critic_network_kwargs: CriticNetworkConfig = field(default_factory=CriticNetworkConfig)
 
     def __post_init__(self):
         super().__post_init__()
-        # Any validation specific to SAC configuration
 
     def get_optimizer_preset(self) -> MultiAdamConfig:
         return MultiAdamConfig(
             weight_decay=0.0,
             optimizer_groups={
-                "actor": {"lr": self.actor_lr},
-                "critic": {"lr": self.critic_lr},
-                "temperature": {"lr": self.temperature_lr},
+                "actor": {"lr": 3e-4},
+                "critic": {"lr": 3e-4},
+                "temperature": {"lr": 3e-4},
             },
         )
 

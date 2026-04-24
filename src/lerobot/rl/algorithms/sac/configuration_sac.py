@@ -35,7 +35,7 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
     """SAC algorithm hyperparameters."""
 
     # Policy config
-    sac_config: GaussianActorConfig
+    policy_config: GaussianActorConfig
 
     # Optimizer learning rates
     actor_lr: float = 3e-4
@@ -55,31 +55,26 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
 
     # Temperature / entropy
     temperature_init: float = 1.0
+    # Target entropy for automatic temperature tuning. If ``None``, defaults to
+    # ``-|A|/2`` where ``|A|`` is the total action dimension (continuous + 1 if
+    # there is a discrete action head).
+    target_entropy: float | None = None
 
     # Update loop
     utd_ratio: int = 1
     policy_update_freq: int = 1
     grad_clip_norm: float = 40.0
 
+    # Optimizations
+    # torch.compile is currently disabled by default
+    use_torch_compile: bool = False
+
     @classmethod
     def from_policy_config(cls, policy_cfg: GaussianActorConfig) -> SACAlgorithmConfig:
-        """Build an algorithm config by copying hyperparameters from the policy config."""
+        """Build an algorithm config with default hyperparameters for a given policy."""
         return cls(
-            actor_lr=policy_cfg.actor_lr,
-            critic_lr=policy_cfg.critic_lr,
-            temperature_lr=policy_cfg.temperature_lr,
-            discount=policy_cfg.discount,
-            use_backup_entropy=policy_cfg.use_backup_entropy,
-            critic_target_update_weight=policy_cfg.critic_target_update_weight,
-            num_critics=policy_cfg.num_critics,
-            num_subsample_critics=policy_cfg.num_subsample_critics,
-            critic_network_kwargs=policy_cfg.critic_network_kwargs,
+            policy_config=policy_cfg,
             discrete_critic_network_kwargs=policy_cfg.discrete_critic_network_kwargs,
-            temperature_init=policy_cfg.temperature_init,
-            utd_ratio=policy_cfg.utd_ratio,
-            policy_update_freq=policy_cfg.policy_update_freq,
-            grad_clip_norm=policy_cfg.grad_clip_norm,
-            sac_config=policy_cfg,
         )
 
     def build_algorithm(self, policy: torch.nn.Module) -> SACAlgorithm:

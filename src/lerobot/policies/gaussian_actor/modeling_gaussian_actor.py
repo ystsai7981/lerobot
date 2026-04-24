@@ -19,7 +19,6 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -61,7 +60,7 @@ class GaussianActorPolicy(
         continuous_action_dim = config.output_features[ACTION].shape[0]
         self._init_encoders()
         self._init_actor(continuous_action_dim)
-        self.discrete_critic = None
+        self._init_discrete_critic()
 
     def get_optim_params(self) -> dict:
         optim_params = {
@@ -125,19 +124,14 @@ class GaussianActorPolicy(
     def load_actor_weights(self, state_dicts: dict[str, Any], device: str | torch.device = "cpu") -> None:
         from lerobot.utils.transition import move_state_dict_to_device
 
-        actor_sd = move_state_dict_to_device(state_dicts["policy"], device=device)
-        self.actor.load_state_dict(actor_sd)
+        actor_state_dict = move_state_dict_to_device(state_dicts["policy"], device=device)
+        self.actor.load_state_dict(actor_state_dict)
 
-        if "discrete_critic" in state_dicts:
-            dc_sd = move_state_dict_to_device(state_dicts["discrete_critic"], device=device)
-            if self.discrete_critic is None:
-                self.discrete_critic = DiscreteCritic(
-                    encoder=self.encoder_critic,
-                    input_dim=self.encoder_critic.output_dim,
-                    output_dim=self.config.num_discrete_actions,
-                    **asdict(self.config.discrete_critic_network_kwargs),
-                ).to(device)
-            self.discrete_critic.load_state_dict(dc_sd)
+        if "discrete_critic" in state_dicts and self.discrete_critic is not None:
+            discrete_critic_state_dict = move_state_dict_to_device(
+                state_dicts["discrete_critic"], device=device
+            )
+            self.discrete_critic.load_state_dict(discrete_critic_state_dict)
 
     def _init_encoders(self):
         """Initialize shared or separate encoders for actor and critic."""
@@ -148,7 +142,7 @@ class GaussianActorPolicy(
         )
 
     def _init_actor(self, continuous_action_dim):
-        """Initialize policy actor network and default target entropy."""
+        """Initialize policy actor network."""
         # NOTE: The actor select only the continuous action part
         self.actor = Policy(
             encoder=self.encoder_actor,
@@ -158,10 +152,19 @@ class GaussianActorPolicy(
             **asdict(self.config.policy_kwargs),
         )
 
-        self.target_entropy = self.config.target_entropy
-        if self.target_entropy is None:
-            dim = continuous_action_dim + (1 if self.config.num_discrete_actions is not None else 0)
-            self.target_entropy = -np.prod(dim) / 2
+    def _init_discrete_critic(self) -> None:
+        """Initialize discrete critic network."""
+        if self.config.num_discrete_actions is None:
+            self.discrete_critic = None
+            return
+
+        # TODO(Khalil): Compile the discrete critic
+        self.discrete_critic = DiscreteCritic(
+            encoder=self.encoder_critic,
+            input_dim=self.encoder_critic.output_dim,
+            output_dim=self.config.num_discrete_actions,
+            **asdict(self.config.discrete_critic_network_kwargs),
+        )
 
 
 class GaussianActorObservationEncoder(nn.Module):

@@ -327,7 +327,6 @@ def test_learner_algorithm_wiring():
             OBS_STATE: {"min": [0.0] * state_dim, "max": [1.0] * state_dim},
             ACTION: {"min": [0.0] * action_dim, "max": [1.0] * action_dim},
         },
-        use_torch_compile=False,
     )
     sac_cfg.validate_features()
 
@@ -412,7 +411,6 @@ def test_initial_and_periodic_weight_push_consistency():
             OBS_STATE: {"min": [0.0] * state_dim, "max": [1.0] * state_dim},
             ACTION: {"min": [0.0] * action_dim, "max": [1.0] * action_dim},
         },
-        use_torch_compile=False,
     )
     sac_cfg.validate_features()
 
@@ -450,7 +448,6 @@ def test_actor_side_algorithm_select_action_and_load_weights():
             OBS_STATE: {"min": [0.0] * state_dim, "max": [1.0] * state_dim},
             ACTION: {"min": [0.0] * action_dim, "max": [1.0] * action_dim},
         },
-        use_torch_compile=False,
     )
     sac_cfg.validate_features()
 

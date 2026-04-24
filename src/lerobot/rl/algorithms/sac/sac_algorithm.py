@@ -54,14 +54,14 @@ class SACAlgorithm(RLAlgorithm):
         config: SACAlgorithmConfig,
     ):
         self.config = config
-        self.policy_config = config.sac_config
+        self.policy_config = config.policy_config
         self.policy = policy
         self.optimizers: dict[str, Optimizer] = {}
         self._optimization_step: int = 0
 
         action_dim = self.policy.config.output_features[ACTION].shape[0]
         self._init_critics(action_dim)
-        self._init_temperature()
+        self._init_temperature(action_dim)
 
         self._device = torch.device(self.policy.config.device)
         self._move_to_device()
@@ -90,49 +90,44 @@ class SACAlgorithm(RLAlgorithm):
 
         # TODO(Khalil): Investigate and fix torch.compile
         # NOTE: torch.compile is disabled, policy does not converge when enabled.
-        if self.policy_config.use_torch_compile:
+        if self.config.use_torch_compile:
             self.critic_ensemble = torch.compile(self.critic_ensemble)
             self.critic_target = torch.compile(self.critic_target)
 
-        self.discrete_critic = None
         self.discrete_critic_target = None
         if self.policy_config.num_discrete_actions is not None:
-            self.discrete_critic, self.discrete_critic_target = self._init_discrete_critics(encoder)
-            self.policy.discrete_critic = self.discrete_critic
+            self.discrete_critic_target = self._init_discrete_critic_target(encoder)
 
-    def _init_discrete_critics(
-        self, encoder: GaussianActorObservationEncoder
-    ) -> tuple[DiscreteCritic, DiscreteCritic]:
-        """Build discrete critic ensemble and target networks."""
-        discrete_critic = DiscreteCritic(
-            encoder=encoder,
-            input_dim=encoder.output_dim,
-            output_dim=self.policy_config.num_discrete_actions,
-            **asdict(self.config.discrete_critic_network_kwargs),
-        )
+    def _init_discrete_critic_target(self, encoder: GaussianActorObservationEncoder) -> DiscreteCritic:
+        """Build target discrete critic (main network is owned by the policy)."""
         discrete_critic_target = DiscreteCritic(
             encoder=encoder,
             input_dim=encoder.output_dim,
             output_dim=self.policy_config.num_discrete_actions,
             **asdict(self.config.discrete_critic_network_kwargs),
         )
-
         # TODO(Khalil): Compile the discrete critic
-        discrete_critic_target.load_state_dict(discrete_critic.state_dict())
-        return discrete_critic, discrete_critic_target
+        discrete_critic_target.load_state_dict(self.policy.discrete_critic.state_dict())
+        return discrete_critic_target
 
-    def _init_temperature(self) -> None:
-        """Set up temperature parameter (log_alpha)."""
+    def _init_temperature(self, continuous_action_dim: int) -> None:
+        """Set up temperature parameter (log_alpha) and target entropy."""
         temp_init = self.config.temperature_init
         self.log_alpha = nn.Parameter(torch.tensor([math.log(temp_init)]))
+
+        self.target_entropy = self.config.target_entropy
+        if self.target_entropy is None:
+            total_action_dim = continuous_action_dim + (
+                1 if self.policy_config.num_discrete_actions is not None else 0
+            )
+            self.target_entropy = -total_action_dim / 2
 
     def _move_to_device(self) -> None:
         self.policy.to(self._device)
         self.critic_ensemble.to(self._device)
         self.critic_target.to(self._device)
         self.log_alpha = nn.Parameter(self.log_alpha.data.to(self._device))
-        if self.discrete_critic is not None:
-            self.discrete_critic.to(self._device)
+        if self.discrete_critic_target is not None:
             self.discrete_critic_target.to(self._device)
 
     @property
@@ -175,7 +170,7 @@ class SACAlgorithm(RLAlgorithm):
         Returns:
             Tensor of Q-values from the discrete critic network
         """
-        discrete_critic = self.discrete_critic_target if use_target else self.discrete_critic
+        discrete_critic = self.discrete_critic_target if use_target else self.policy.discrete_critic
         q_values = discrete_critic(observations, observation_features)
         return q_values
 
@@ -196,7 +191,7 @@ class SACAlgorithm(RLAlgorithm):
                 loss_dc = self._compute_loss_discrete_critic(fb)
                 self.optimizers["discrete_critic"].zero_grad()
                 loss_dc.backward()
-                torch.nn.utils.clip_grad_norm_(self.discrete_critic.parameters(), max_norm=clip)
+                torch.nn.utils.clip_grad_norm_(self.policy.discrete_critic.parameters(), max_norm=clip)
                 self.optimizers["discrete_critic"].step()
 
             self._update_target_networks()
@@ -219,7 +214,9 @@ class SACAlgorithm(RLAlgorithm):
             loss_dc = self._compute_loss_discrete_critic(fb)
             self.optimizers["discrete_critic"].zero_grad()
             loss_dc.backward()
-            dc_grad = torch.nn.utils.clip_grad_norm_(self.discrete_critic.parameters(), max_norm=clip).item()
+            dc_grad = torch.nn.utils.clip_grad_norm_(
+                self.policy.discrete_critic.parameters(), max_norm=clip
+            ).item()
             self.optimizers["discrete_critic"].step()
             stats.losses["loss_discrete_critic"] = loss_dc.item()
             stats.grad_norms["discrete_critic"] = dc_grad
@@ -396,7 +393,7 @@ class SACAlgorithm(RLAlgorithm):
         with torch.no_grad():
             _, log_probs, _ = self.policy.actor(observations, observation_features)
 
-        temperature_loss = (-self.log_alpha.exp() * (log_probs + self.policy.target_entropy)).mean()
+        temperature_loss = (-self.log_alpha.exp() * (log_probs + self.target_entropy)).mean()
         return temperature_loss
 
     def _update_target_networks(self) -> None:
@@ -411,7 +408,7 @@ class SACAlgorithm(RLAlgorithm):
         if self.policy_config.num_discrete_actions is not None:
             for target_p, p in zip(
                 self.discrete_critic_target.parameters(),
-                self.discrete_critic.parameters(),
+                self.policy.discrete_critic.parameters(),
                 strict=True,
             ):
                 target_p.data.copy_(
@@ -471,7 +468,7 @@ class SACAlgorithm(RLAlgorithm):
         }
         if self.policy_config.num_discrete_actions is not None:
             self.optimizers["discrete_critic"] = torch.optim.Adam(
-                self.discrete_critic.parameters(), lr=self.config.critic_lr
+                self.policy.discrete_critic.parameters(), lr=self.config.critic_lr
             )
         return self.optimizers
 
@@ -485,16 +482,13 @@ class SACAlgorithm(RLAlgorithm):
         }
         if self.policy_config.num_discrete_actions is not None:
             state_dicts["discrete_critic"] = move_state_dict_to_device(
-                self.discrete_critic.state_dict(), device="cpu"
+                self.policy.discrete_critic.state_dict(), device="cpu"
             )
         return state_dicts
 
     def load_weights(self, weights: dict[str, Any], device: str | torch.device = "cpu") -> None:
-        actor_sd = move_state_dict_to_device(weights["policy"], device=device)
-        self.policy.actor.load_state_dict(actor_sd)
-        if "discrete_critic" in weights and self.policy_config.num_discrete_actions is not None:
-            dc_sd = move_state_dict_to_device(weights["discrete_critic"], device=device)
-            self.discrete_critic.load_state_dict(dc_sd)
+        """Load actor + discrete-critic weights into the policy."""
+        self.policy.load_actor_weights(weights, device=device)
 
     def get_observation_features(
         self, observations: Tensor, next_observations: Tensor
