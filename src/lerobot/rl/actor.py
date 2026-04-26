@@ -338,7 +338,8 @@ def act_with_policy(
 
         # Check for intervention from transition info
         intervention_info = new_transition[TransitionKey.INFO]
-        if intervention_info.get(TeleopEvents.IS_INTERVENTION, False):
+        is_intervention = bool(intervention_info.get(TeleopEvents.IS_INTERVENTION, False))
+        if is_intervention:
             episode_intervention = True
             episode_intervention_steps += 1
 
@@ -346,6 +347,10 @@ def act_with_policy(
             "discrete_penalty": torch.tensor(
                 [new_transition[TransitionKey.COMPLEMENTARY_DATA].get("discrete_penalty", 0.0)]
             ),
+            # Forward the intervention flag so the learner can route this transition
+            # into the offline replay buffer (see `process_transitions` in learner.py).
+            # Use the plain string key so the payload survives torch.load(weights_only=True).
+            TeleopEvents.IS_INTERVENTION.value: is_intervention,
         }
         # Create transition for learner (convert to old format)
         list_transition_to_send_to_learner.append(
