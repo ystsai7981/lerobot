@@ -383,9 +383,20 @@ def make_processors(
             GymHILAdapterProcessorStep(),
             Numpy2TorchActionProcessorStep(),
             VanillaObservationProcessorStep(),
-            AddBatchDimensionProcessorStep(),
-            DeviceProcessorStep(device=device),
         ]
+
+        # Add time limit processor if reset config exists
+        if cfg.processor.reset is not None:
+            env_pipeline_steps.append(
+                TimeLimitProcessorStep(max_episode_steps=int(cfg.processor.reset.control_time_s * cfg.fps))
+            )
+
+        env_pipeline_steps.extend(
+            [
+                AddBatchDimensionProcessorStep(),
+                DeviceProcessorStep(device=device),
+            ]
+        )
 
         return DataProcessorPipeline(
             steps=env_pipeline_steps, to_transition=identity_transition, to_output=identity_transition
