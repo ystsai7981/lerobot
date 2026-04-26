@@ -260,7 +260,7 @@ def act_with_policy(
     policy = policy.to(device).eval()
     assert isinstance(policy, nn.Module)
 
-    preprocessor, _postprocessor = make_pre_post_processors(
+    preprocessor, postprocessor = make_pre_post_processors(
         policy_cfg=cfg.policy,
         dataset_stats=cfg.policy.dataset_stats,
     )
@@ -291,6 +291,7 @@ def act_with_policy(
         with policy_timer:
             normalized_observation = preprocessor.process_observation(observation)
             action = policy.select_action(batch=normalized_observation)
+            action = postprocessor.process_action(action)
         policy_fps = policy_timer.fps_last
 
         log_policy_frequency_issue(policy_fps=policy_fps, cfg=cfg, interaction_step=interaction_step)
