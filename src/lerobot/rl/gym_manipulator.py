@@ -568,8 +568,13 @@ def step_env_and_process_transition(
         if raw_joint_positions is not None:
             complementary_data["raw_joint_positions"] = raw_joint_positions
 
+    # Merge env and action-processor info: env wins for str keys, action-processor
+    # wins for `TeleopEvents` enum keys
+    action_info = processed_action_transition[TransitionKey.INFO]
     new_info = info.copy()
-    new_info.update(processed_action_transition[TransitionKey.INFO])
+    for key, value in action_info.items():
+        if isinstance(key, TeleopEvents):
+            new_info[key] = value
 
     new_transition = create_transition(
         observation=obs,
