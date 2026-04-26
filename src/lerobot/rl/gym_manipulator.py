@@ -708,20 +708,6 @@ def control_loop(
         terminated = transition.get(TransitionKey.DONE, False)
         truncated = transition.get(TransitionKey.TRUNCATED, False)
 
-        # DEBUG: trace gripper value through the pipeline.
-        _action_t = transition[TransitionKey.ACTION]
-        _teleop_t = transition[TransitionKey.COMPLEMENTARY_DATA].get("teleop_action")
-        _info_teleop = transition[TransitionKey.INFO].get("teleop_action")
-        _is_intervention = transition[TransitionKey.INFO].get(TeleopEvents.IS_INTERVENTION, False)
-        print(
-            f"[grip-debug] use_gripper={use_gripper} "
-            f"is_intervention={_is_intervention} "
-            f"neutral={neutral_action.tolist()} "
-            f"ACTION={_action_t.squeeze().tolist() if hasattr(_action_t, 'squeeze') else _action_t} "
-            f"comp.teleop_action={_teleop_t.tolist() if hasattr(_teleop_t, 'tolist') else _teleop_t} "
-            f"info.teleop_action={_info_teleop.tolist() if hasattr(_info_teleop, 'tolist') else _info_teleop}"
-        )
-
         if cfg.mode == "record":
             observations = {
                 k: v.squeeze(0).cpu()
