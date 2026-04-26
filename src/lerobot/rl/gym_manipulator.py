@@ -551,6 +551,12 @@ def step_env_and_process_transition(
     terminated = terminated or processed_action_transition[TransitionKey.DONE]
     truncated = truncated or processed_action_transition[TransitionKey.TRUNCATED]
     complementary_data = processed_action_transition[TransitionKey.COMPLEMENTARY_DATA].copy()
+
+    if hasattr(env, "get_raw_joint_positions"):
+        raw_joint_positions = env.get_raw_joint_positions()
+        if raw_joint_positions is not None:
+            complementary_data["raw_joint_positions"] = raw_joint_positions
+
     new_info = info.copy()
     new_info.update(processed_action_transition[TransitionKey.INFO])
 
@@ -566,6 +572,24 @@ def step_env_and_process_transition(
     new_transition = env_processor(new_transition)
 
     return new_transition
+
+
+def reset_and_build_transition(
+    env: gym.Env,
+    env_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
+    action_processor: DataProcessorPipeline[EnvTransition, EnvTransition],
+) -> EnvTransition:
+    """Reset env + processors and return the first env-processed transition."""
+    obs, info = env.reset()
+    env_processor.reset()
+    action_processor.reset()
+    complementary_data: dict[str, Any] = {}
+    if hasattr(env, "get_raw_joint_positions"):
+        raw_joint_positions = env.get_raw_joint_positions()
+        if raw_joint_positions is not None:
+            complementary_data["raw_joint_positions"] = raw_joint_positions
+    transition = create_transition(observation=obs, info=info, complementary_data=complementary_data)
+    return env_processor(data=transition)
 
 
 def control_loop(
@@ -593,17 +617,7 @@ def control_loop(
     print("- When not intervening, robot will stay still")
     print("- Press Ctrl+C to exit")
 
-    # Reset environment and processors
-    obs, info = env.reset()
-    complementary_data = (
-        {"raw_joint_positions": info.pop("raw_joint_positions")} if "raw_joint_positions" in info else {}
-    )
-    env_processor.reset()
-    action_processor.reset()
-
-    # Process initial observation
-    transition = create_transition(observation=obs, info=info, complementary_data=complementary_data)
-    transition = env_processor(data=transition)
+    transition = reset_and_build_transition(env, env_processor, action_processor)
 
     # Determine if gripper is used
     use_gripper = cfg.env.processor.gripper.use_gripper if cfg.env.processor.gripper is not None else True
@@ -723,12 +737,7 @@ def control_loop(
                     dataset.save_episode()
 
             # Reset for new episode
-            obs, info = env.reset()
-            env_processor.reset()
-            action_processor.reset()
-
-            transition = create_transition(observation=obs, info=info)
-            transition = env_processor(transition)
+            transition = reset_and_build_transition(env, env_processor, action_processor)
 
         # Maintain fps timing
         precise_sleep(max(dt - (time.perf_counter() - step_start_time), 0.0))
