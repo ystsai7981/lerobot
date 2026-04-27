@@ -181,7 +181,14 @@ def _make_transformers_client(config: VlmConfig) -> VlmClient:
             "for VL models."
         )
     processor = AutoProcessor.from_pretrained(config.model_id)
-    model = auto_cls.from_pretrained(config.model_id, torch_dtype="auto")
+    # device_map='auto' loads weights directly to GPU(s) and shards when
+    # needed; without it, transformers stages the full checkpoint in CPU
+    # memory first which OOMs the host on FP8/large models.
+    model = auto_cls.from_pretrained(
+        config.model_id,
+        torch_dtype="auto",
+        device_map="auto",
+    )
     model.eval()
 
     def _gen(batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float) -> list[str]:
