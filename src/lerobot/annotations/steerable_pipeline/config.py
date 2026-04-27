@@ -23,10 +23,17 @@ from typing import Literal
 
 @dataclass
 class Module1Config:
-    """Module 1 hyperparameters: plan + subtasks + memory."""
+    """Module 1 hyperparameters: plan + subtasks + memory.
+
+    Subtask decomposition sees the **whole episode** as one Qwen-VL video
+    block — no keyframe stride or count: the model handles temporal pooling
+    itself and decides where to cut. ``max_video_frames`` only caps the
+    number of frames packed into the video block (a model-capacity bound,
+    not an annotation-logic knob).
+    """
 
     enabled: bool = True
-    keyframes_per_episode: int = 8
+    max_video_frames: int = 32
     min_subtask_seconds: float = 1.5
     plan_max_steps: int = 8
 

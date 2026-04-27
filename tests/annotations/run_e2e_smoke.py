@@ -79,7 +79,7 @@ def _stub_responder(messages):
                         text = block.get("text", "")
             elif isinstance(content, str):
                 text = content
-    if "Decompose the demonstration" in text:
+    if "atomic subtasks" in text:
         return {
             "subtasks": [
                 {"text": "grasp the bottle", "start": 0.0, "end": 1.0},

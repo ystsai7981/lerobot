@@ -36,11 +36,20 @@ uv run lerobot-annotate \
   --vlm.tensor_parallel_size=2
 ```
 
-The pipeline attaches camera keyframes to every Module 1/2/3 prompt by
-default, decoded from the dataset's first `observation.images.*` stream.
-Override with `--vlm.camera_key=observation.images.<name>` to pin a
-specific viewpoint. Datasets with no video tracks fall back to text-only
-prompts automatically.
+The pipeline attaches actual camera footage to every Module 1/2/3 prompt
+by default, decoded from the dataset's first `observation.images.*`
+stream. Override with `--vlm.camera_key=observation.images.<name>` to
+pin a specific viewpoint. Datasets with no video tracks fall back to
+text-only prompts automatically.
+
+**Module 1 sees the whole episode as one video block.** Subtask
+decomposition gets a `{"type":"video", "video":[<frames>]}` block
+covering the entire demonstration; Qwen-VL pools temporally on its own
+and decides where to cut. There is no keyframe stride or count knob —
+`--module_1.max_video_frames` (default 32) only caps the frames packed
+into the video block as a model-capacity bound. Module 2 attaches a
+single still frame at the interjection timestamp; Module 3 attaches the
+exact emission frame to each VQA pair.
 
 The executor picks `LocalPipelineExecutor` for small datasets and
 `SlurmPipelineExecutor` for large ones based on

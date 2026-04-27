@@ -22,9 +22,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..config import Module1Config
-from ..frames import FrameProvider, null_provider, to_image_blocks
+from ..frames import FrameProvider, null_provider, to_video_block
 from ..prompts import load as load_prompt
-from ..reader import EpisodeRecord, keyframe_indices
+from ..reader import EpisodeRecord
 from ..staging import EpisodeStaging
 from ..vlm_client import VlmClient
 
@@ -151,17 +151,14 @@ class PlanSubtasksMemoryModule:
         if record.row_count == 0 or not record.frame_timestamps:
             return []
         episode_duration = record.frame_timestamps[-1] - record.frame_timestamps[0]
-        keyframe_local = keyframe_indices(record, self.config.keyframes_per_episode)
-        keyframe_ts = [float(record.frame_timestamps[i]) for i in keyframe_local]
-        images = self.frame_provider.frames_at(record, keyframe_ts)
+        video_frames = self.frame_provider.video_for_episode(record, self.config.max_video_frames)
         prompt = load_prompt("module_1_subtasks").format(
             episode_task=record.episode_task,
-            num_keyframes=len(keyframe_local),
             min_subtask_seconds=self.config.min_subtask_seconds,
             max_steps=self.config.plan_max_steps,
             episode_duration=f"{episode_duration:.3f}",
         )
-        content = [*to_image_blocks(images), {"type": "text", "text": prompt}]
+        content = [*to_video_block(video_frames), {"type": "text", "text": prompt}]
         messages = [{"role": "user", "content": content}]
         result = self.vlm.generate_json([messages])[0]
         spans = result.get("subtasks") if isinstance(result, dict) else None

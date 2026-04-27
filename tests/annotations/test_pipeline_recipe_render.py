@@ -49,14 +49,14 @@ _RECIPE_PATH = (
 def _build_executor() -> Executor:
     vlm = make_canned_responder(
         {
-            "Decompose the demonstration": {
+            "atomic subtasks": {
                 "subtasks": [
                     {"text": "grasp the bottle", "start": 0.0, "end": 0.5},
                     {"text": "pour into the cup", "start": 0.5, "end": 1.0},
                     {"text": "place the bottle down", "start": 1.0, "end": 1.5},
                 ]
             },
-            "write a concise hierarchical PLAN": {"plan": "1. grasp\n2. pour\n3. place"},
+            "concise hierarchical PLAN": {"plan": "1. grasp\n2. pour\n3. place"},
             "Update the memory": {"memory": "poured once"},
             "acknowledgement the robot": {"text": "Sure."},
             "ONE realistic interruption": {

@@ -37,12 +37,24 @@ class FrameProvider(Protocol):
     def frames_at(self, record: EpisodeRecord, timestamps: list[float]) -> list[Any]:
         """Return one PIL.Image per timestamp; empty list if no camera available."""
 
+    def video_for_episode(self, record: EpisodeRecord, max_frames: int) -> list[Any]:
+        """Return up to ``max_frames`` PIL images covering the whole episode.
+
+        Sampling is uniform across the episode duration. The returned list is
+        intended to be passed as one ``{"type":"video", "video":<list>}``
+        block to a Qwen-VL-compatible model that pools temporally itself.
+        Empty list if no camera available.
+        """
+
 
 @dataclass
 class _NullProvider:
     """No-op provider used when the dataset has no video keys or in tests."""
 
     def frames_at(self, record: EpisodeRecord, timestamps: list[float]) -> list[Any]:
+        return []
+
+    def video_for_episode(self, record: EpisodeRecord, max_frames: int) -> list[Any]:
         return []
 
 
@@ -133,6 +145,27 @@ class VideoFrameProvider:
             out.append(Image.fromarray(hwc, mode="RGB"))
         return out
 
+    def video_for_episode(self, record: EpisodeRecord, max_frames: int) -> list[Any]:
+        """Return up to ``max_frames`` images uniformly sampled across the episode.
+
+        The whole episode duration is covered; the model picks subtask
+        boundaries from the temporal pooling it does internally.
+        """
+        if max_frames <= 0 or self.camera_key is None or not record.frame_timestamps:
+            return []
+        n_frames = min(max_frames, len(record.frame_timestamps))
+        if n_frames == len(record.frame_timestamps):
+            timestamps = list(record.frame_timestamps)
+        else:
+            t0 = record.frame_timestamps[0]
+            t_last = record.frame_timestamps[-1]
+            if t_last <= t0:
+                timestamps = [float(t0)] * n_frames
+            else:
+                step = (t_last - t0) / (n_frames - 1) if n_frames > 1 else 0.0
+                timestamps = [float(t0 + i * step) for i in range(n_frames)]
+        return self.frames_at(record, timestamps)
+
 
 def make_frame_provider(root: Path, camera_key: str | None = None) -> FrameProvider:
     """Build a :class:`VideoFrameProvider` if videos are present, else null."""
@@ -148,3 +181,14 @@ def make_frame_provider(root: Path, camera_key: str | None = None) -> FrameProvi
 def to_image_blocks(images: list[Any]) -> list[dict[str, Any]]:
     """Convert PIL images to Qwen-VL-compatible content blocks."""
     return [{"type": "image", "image": img} for img in images]
+
+
+def to_video_block(images: list[Any]) -> list[dict[str, Any]]:
+    """Wrap a list of PIL images as one Qwen-VL video block.
+
+    Returns ``[]`` when the list is empty, so the caller can splat the result
+    into a content array without a separate emptiness check.
+    """
+    if not images:
+        return []
+    return [{"type": "video", "video": list(images)}]
