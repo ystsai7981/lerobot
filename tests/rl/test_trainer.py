@@ -14,13 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-from torch import Tensor
+import pytest
 
-from lerobot.rl.algorithms.base import RLAlgorithm
-from lerobot.rl.algorithms.configs import TrainingStats
-from lerobot.rl.trainer import RLTrainer
-from lerobot.utils.constants import ACTION, OBS_STATE
+pytest.importorskip("datasets", reason="datasets is required (install lerobot[dataset])")
+
+import torch  # noqa: E402
+from torch import Tensor  # noqa: E402
+
+from lerobot.rl.algorithms.base import RLAlgorithm  # noqa: E402
+from lerobot.rl.algorithms.configs import TrainingStats  # noqa: E402
+from lerobot.rl.trainer import RLTrainer  # noqa: E402
+from lerobot.utils.constants import ACTION, OBS_STATE  # noqa: E402
 
 
 class _DummyRLAlgorithmConfig:

@@ -15,15 +15,18 @@
 # limitations under the License.
 
 import pytest
-import torch
-from torch import Tensor, nn
 
-from lerobot.configs.types import FeatureType, PolicyFeature
-from lerobot.policies.gaussian_actor.configuration_gaussian_actor import GaussianActorConfig
-from lerobot.policies.gaussian_actor.modeling_gaussian_actor import MLP, GaussianActorPolicy
-from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig
-from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_STATE
-from lerobot.utils.random_utils import seeded_context, set_seed
+pytest.importorskip("datasets", reason="datasets is required (install lerobot[dataset])")
+
+import torch  # noqa: E402
+from torch import Tensor, nn  # noqa: E402
+
+from lerobot.configs.types import FeatureType, PolicyFeature  # noqa: E402
+from lerobot.policies.gaussian_actor.configuration_gaussian_actor import GaussianActorConfig  # noqa: E402
+from lerobot.policies.gaussian_actor.modeling_gaussian_actor import MLP, GaussianActorPolicy  # noqa: E402
+from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig  # noqa: E402
+from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_STATE  # noqa: E402
+from lerobot.utils.random_utils import seeded_context, set_seed  # noqa: E402
 
 try:
     import transformers  # noqa: F401

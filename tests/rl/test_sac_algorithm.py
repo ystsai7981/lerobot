@@ -16,16 +16,19 @@
 """Tests for the RL algorithm abstraction and SACAlgorithm implementation."""
 
 import pytest
-import torch
 
-from lerobot.configs.types import FeatureType, PolicyFeature
-from lerobot.policies.gaussian_actor.configuration_gaussian_actor import GaussianActorConfig
-from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
-from lerobot.rl.algorithms.configs import RLAlgorithmConfig, TrainingStats
-from lerobot.rl.algorithms.factory import make_algorithm
-from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig
-from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_STATE
-from lerobot.utils.random_utils import set_seed
+pytest.importorskip("datasets", reason="datasets is required (install lerobot[dataset])")
+
+import torch  # noqa: E402
+
+from lerobot.configs.types import FeatureType, PolicyFeature  # noqa: E402
+from lerobot.policies.gaussian_actor.configuration_gaussian_actor import GaussianActorConfig  # noqa: E402
+from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy  # noqa: E402
+from lerobot.rl.algorithms.configs import RLAlgorithmConfig, TrainingStats  # noqa: E402
+from lerobot.rl.algorithms.factory import make_algorithm  # noqa: E402
+from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig  # noqa: E402
+from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_STATE  # noqa: E402
+from lerobot.utils.random_utils import set_seed  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers (reuse patterns from tests/policies/test_gaussian_actor_policy.py)

@@ -13,11 +13,15 @@
 # limitations under the License.
 """Tests for RL data mixing (DataMixer, OnlineOfflineMixer)."""
 
-import torch
+import pytest
 
-from lerobot.rl.buffer import ReplayBuffer
-from lerobot.rl.data_sources import OnlineOfflineMixer
-from lerobot.utils.constants import OBS_STATE
+pytest.importorskip("datasets", reason="datasets is required (install lerobot[dataset])")
+
+import torch  # noqa: E402
+
+from lerobot.rl.buffer import ReplayBuffer  # noqa: E402
+from lerobot.rl.data_sources import OnlineOfflineMixer  # noqa: E402
+from lerobot.utils.constants import OBS_STATE  # noqa: E402
 
 
 def _make_buffer(capacity: int = 100, state_dim: int = 4) -> ReplayBuffer:
