@@ -1,0 +1,75 @@
+# Language columns and recipes
+
+LeRobot stores reusable language annotations directly next to frame data in `data/chunk-*/file-*.parquet`.
+The two optional columns are:
+
+- `language_persistent`: a list of rows broadcast across every frame in an episode for state that remains active, such as `subtask`, `plan`, and `memory`.
+- `language_events`: a list of rows only on the exact frame where an event was emitted, such as `interjection`, `vqa`, and speech tool calls.
+
+Both columns share the same row shape:
+
+```text
+role: string
+content: string | null
+style: string | null
+timestamp: float64
+tool_calls: list[Json] | null
+```
+
+`meta/tasks.parquet` remains the canonical source for the task. The special `${task}` recipe binding always reads that task string and does not depend on language annotations.
+
+## Architecture
+
+The language stack has three layers:
+
+1. `lerobot.datasets.language` defines the schema, style registry, and `column_for_style`.
+2. `lerobot.datasets.language_render` resolves rows and renders messages.
+3. `RenderMessagesStep` turns dataset samples into `messages`, `message_streams`, and `target_message_indices`.
+
+`LeRobotDataset` stays recipe-agnostic. It passes `language_persistent` and `language_events` through when present, and unannotated datasets keep their existing behavior.
+
+## Temporal semantics
+
+Persistent styles are active after emission until replaced:
+
+- `active_at(t, style=subtask)`
+- `nth_prev(style=memory, offset=1)`
+- `nth_next(style=subtask, offset=1)`
+
+Event styles only exist on their exact timestamp:
+
+- `emitted_at(t, style=interjection)`
+- `emitted_at(t, style=vqa, role=user)`
+- `emitted_at(t, role=assistant, tool_name=say)`
+
+Exact event matching has no tolerance window, so writers must stamp event rows with frame timestamps from the parquet data.
+
+## Recipe anatomy
+
+Recipes are YAML files backed by `TrainingRecipe` and `MessageTurn`.
+
+```yaml
+messages:
+  - { role: user, content: "${task}", stream: high_level }
+  - { role: assistant, content: "${subtask}", stream: low_level, target: true }
+```
+
+Rendered samples use HF-style chat messages plus LeRobot sidecars:
+
+```python
+sample["messages"]
+sample["message_streams"]
+sample["target_message_indices"]
+```
+
+The renderer does not apply a tokenizer chat template. Policy processors decide how to serialize the messages for their backbone.
+
+## Blends
+
+Blend recipes select one weighted sub-recipe deterministically from the sample index.
+The canonical `recipes/pi05_hirobot.yaml` combines memory updates, interjection responses, high-level subtask prediction, low-level execution, and VQA.
+
+## Graceful absence
+
+If both language columns are missing, `None`, or empty, `RenderMessagesStep` is a no-op.
+If an event-scoped branch is selected on a frame without the required event row, rendering returns `None`, allowing a loader to retry another sample.

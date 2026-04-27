@@ -93,6 +93,7 @@ from .relative_action_processor import (
     to_relative_actions,
 )
 from .rename_processor import RenameObservationsProcessorStep, rename_stats
+from .render_messages_processor import RenderMessagesStep
 from .tokenizer_processor import ActionTokenizerProcessorStep, TokenizerProcessorStep
 
 __all__ = [
@@ -128,6 +129,7 @@ __all__ = [
     "make_default_robot_observation_processor",
     "AbsoluteActionsProcessorStep",
     "RelativeActionsProcessorStep",
+    "RenderMessagesStep",
     "MapDeltaActionToRobotActionStep",
     "MapTensorToDeltaActionDictStep",
     "NewLineTaskProcessorStep",

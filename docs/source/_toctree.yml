@@ -31,8 +31,8 @@
     title: Porting Large Datasets
   - local: using_dataset_tools
     title: Using the Dataset Tools
-  - local: dataset_subtask
-    title: Using Subtasks in the Dataset
+  - local: language_and_recipes
+    title: Language Columns and Recipes
   - local: streaming_video_encoding
     title: Streaming Video Encoding
   title: "Datasets"

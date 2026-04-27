@@ -22,6 +22,7 @@ from PIL import Image as PILImage
 from lerobot.utils.constants import DEFAULT_FEATURES
 from lerobot.utils.utils import is_valid_numpy_dtype_string
 
+from .language import is_language_column, language_column_feature
 from .utils import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_DATA_FILE_SIZE_IN_MB,
@@ -45,7 +46,9 @@ def get_hf_features_from_features(features: dict) -> datasets.Features:
     """
     hf_features = {}
     for key, ft in features.items():
-        if ft["dtype"] == "video":
+        if is_language_column(key):
+            hf_features[key] = language_column_feature()
+        elif ft["dtype"] == "video":
             continue
         elif ft["dtype"] == "image":
             hf_features[key] = datasets.Image()
@@ -242,6 +245,8 @@ def validate_feature_dtype_and_shape(
         return validate_feature_image_or_video(name, expected_shape, value)
     elif expected_dtype == "string":
         return validate_feature_string(name, value)
+    elif expected_dtype == "language":
+        return ""
     else:
         raise NotImplementedError(f"The feature dtype '{expected_dtype}' is not implemented yet.")
 

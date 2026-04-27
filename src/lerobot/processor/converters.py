@@ -171,8 +171,33 @@ def _extract_complementary_data(batch: dict[str, Any]) -> dict[str, Any]:
     index_key = {"index": batch["index"]} if "index" in batch else {}
     task_index_key = {"task_index": batch["task_index"]} if "task_index" in batch else {}
     episode_index_key = {"episode_index": batch["episode_index"]} if "episode_index" in batch else {}
+    timestamp_key = {"timestamp": batch["timestamp"]} if "timestamp" in batch else {}
+    language_persistent_key = (
+        {"language_persistent": batch["language_persistent"]} if "language_persistent" in batch else {}
+    )
+    language_events_key = {"language_events": batch["language_events"]} if "language_events" in batch else {}
+    messages_key = {"messages": batch["messages"]} if "messages" in batch else {}
+    message_streams_key = {"message_streams": batch["message_streams"]} if "message_streams" in batch else {}
+    target_message_indices_key = (
+        {"target_message_indices": batch["target_message_indices"]}
+        if "target_message_indices" in batch
+        else {}
+    )
 
-    return {**pad_keys, **task_key, **subtask_key, **index_key, **task_index_key, **episode_index_key}
+    return {
+        **pad_keys,
+        **task_key,
+        **subtask_key,
+        **index_key,
+        **task_index_key,
+        **episode_index_key,
+        **timestamp_key,
+        **language_persistent_key,
+        **language_events_key,
+        **messages_key,
+        **message_streams_key,
+        **target_message_indices_key,
+    }
 
 
 def create_transition(
