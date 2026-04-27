@@ -27,12 +27,12 @@ LANGUAGE_COLUMNS = (LANGUAGE_PERSISTENT, LANGUAGE_EVENTS)
 PERSISTENT_ROW_FIELDS = ("role", "content", "style", "timestamp", "tool_calls")
 EVENT_ROW_FIELDS = ("role", "content", "style", "tool_calls")
 
-CORE_STYLES = {"subtask", "plan", "memory", "interjection", "vqa"}
+CORE_STYLES = {"subtask", "plan", "memory", "motion", "interjection", "vqa", "trace"}
 EXTENDED_STYLES = set()
 STYLE_REGISTRY = CORE_STYLES | EXTENDED_STYLES
 
-PERSISTENT_STYLES = {"subtask", "plan", "memory"}
-EVENT_ONLY_STYLES = {"interjection", "vqa"}
+PERSISTENT_STYLES = {"subtask", "plan", "memory", "motion"}
+EVENT_ONLY_STYLES = {"interjection", "vqa", "trace"}
 
 LanguageColumn = Literal["language_persistent", "language_events"]
 
