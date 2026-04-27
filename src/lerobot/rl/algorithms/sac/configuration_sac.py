@@ -34,9 +34,6 @@ if TYPE_CHECKING:
 class SACAlgorithmConfig(RLAlgorithmConfig):
     """SAC algorithm hyperparameters."""
 
-    # Policy config
-    policy_config: GaussianActorConfig
-
     # Optimizer learning rates
     actor_lr: float = 3e-4
     critic_lr: float = 3e-4
@@ -69,6 +66,9 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
     # torch.compile is currently disabled by default
     use_torch_compile: bool = False
 
+    # Policy config
+    policy_config: GaussianActorConfig | None = None
+
     @classmethod
     def from_policy_config(cls, policy_cfg: GaussianActorConfig) -> SACAlgorithmConfig:
         """Build an algorithm config with default hyperparameters for a given policy."""
@@ -78,6 +78,13 @@ class SACAlgorithmConfig(RLAlgorithmConfig):
         )
 
     def build_algorithm(self, policy: torch.nn.Module) -> SACAlgorithm:
+        if self.policy_config is None:
+            raise ValueError(
+                "SACAlgorithmConfig.policy_config is None. "
+                "It must be populated (typically by TrainRLServerPipelineConfig.validate) "
+                "before calling build_algorithm()."
+            )
+
         from lerobot.rl.algorithms.sac.sac_algorithm import SACAlgorithm
 
         return SACAlgorithm(policy=policy, config=self)

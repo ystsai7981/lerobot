@@ -69,7 +69,6 @@ from lerobot.common.train_utils import (
 )
 from lerobot.common.wandb_utils import WandBLogger
 from lerobot.configs import parser
-from lerobot.configs.train import TrainRLServerPipelineConfig
 from lerobot.datasets import LeRobotDataset, make_dataset
 from lerobot.policies import make_policy, make_pre_post_processors
 from lerobot.rl.algorithms.base import RLAlgorithm
@@ -77,6 +76,7 @@ from lerobot.rl.algorithms.factory import make_algorithm
 from lerobot.rl.buffer import ReplayBuffer
 from lerobot.rl.data_sources import OnlineOfflineMixer
 from lerobot.rl.process import ProcessSignalHandler
+from lerobot.rl.train_rl import TrainRLServerPipelineConfig
 from lerobot.rl.trainer import RLTrainer
 from lerobot.robots import so_follower  # noqa: F401
 from lerobot.teleoperators import gamepad, so_leader  # noqa: F401
@@ -316,11 +316,7 @@ def add_actor_information_and_train(
 
     policy.train()
 
-    algorithm = make_algorithm(
-        policy=policy,
-        policy_cfg=cfg.policy,
-        algorithm_name=cfg.algorithm,
-    )
+    algorithm = make_algorithm(cfg=cfg.algorithm, policy=policy)
 
     preprocessor, postprocessor = make_pre_post_processors(
         policy_cfg=cfg.policy,

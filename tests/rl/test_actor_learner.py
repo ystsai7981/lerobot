@@ -26,9 +26,9 @@ pytest.importorskip("grpc")
 
 from torch.multiprocessing import Event, Queue
 
-from lerobot.configs.train import TrainRLServerPipelineConfig
 from lerobot.configs.types import FeatureType, PolicyFeature
 from lerobot.policies.gaussian_actor.configuration_gaussian_actor import GaussianActorConfig
+from lerobot.rl.train_rl import TrainRLServerPipelineConfig
 from lerobot.utils.constants import ACTION, OBS_STATE, OBS_STR
 from lerobot.utils.transition import Transition
 from tests.utils import skip_if_package_missing
@@ -314,7 +314,7 @@ def test_learner_algorithm_wiring():
     get_weights() output is serializable."""
     from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
     from lerobot.rl.algorithms.factory import make_algorithm
-    from lerobot.rl.algorithms.sac import SACAlgorithm
+    from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig
     from lerobot.transport.utils import state_to_bytes
 
     state_dim = 10
@@ -333,7 +333,7 @@ def test_learner_algorithm_wiring():
     policy = GaussianActorPolicy(config=sac_cfg)
     policy.train()
 
-    algorithm = make_algorithm(policy=policy, policy_cfg=sac_cfg, algorithm_name="sac")
+    algorithm = make_algorithm(cfg=SACAlgorithmConfig.from_policy_config(sac_cfg), policy=policy)
     assert isinstance(algorithm, SACAlgorithm)
 
     optimizers = algorithm.make_optimizers_and_scheduler()
@@ -400,6 +400,7 @@ def test_initial_and_periodic_weight_push_consistency():
     and produce identical structures."""
     from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
     from lerobot.rl.algorithms.factory import make_algorithm
+    from lerobot.rl.algorithms.sac import SACAlgorithmConfig
     from lerobot.transport.utils import bytes_to_state_dict, state_to_bytes
 
     state_dim = 10
@@ -416,7 +417,7 @@ def test_initial_and_periodic_weight_push_consistency():
 
     policy = GaussianActorPolicy(config=sac_cfg)
     policy.train()
-    algorithm = make_algorithm(policy=policy, policy_cfg=sac_cfg, algorithm_name="sac")
+    algorithm = make_algorithm(cfg=SACAlgorithmConfig.from_policy_config(sac_cfg), policy=policy)
     algorithm.make_optimizers_and_scheduler()
 
     # Simulate initial push (same code path the learner now uses)
@@ -437,7 +438,7 @@ def test_actor_side_algorithm_select_action_and_load_weights():
     """Simulate actor: create algorithm without optimizers, select_action, load_weights."""
     from lerobot.policies.gaussian_actor.modeling_gaussian_actor import GaussianActorPolicy
     from lerobot.rl.algorithms.factory import make_algorithm
-    from lerobot.rl.algorithms.sac import SACAlgorithm
+    from lerobot.rl.algorithms.sac import SACAlgorithm, SACAlgorithmConfig
 
     state_dim = 10
     action_dim = 6
@@ -454,7 +455,7 @@ def test_actor_side_algorithm_select_action_and_load_weights():
     # Actor side: no optimizers
     policy = GaussianActorPolicy(config=sac_cfg)
     policy.eval()
-    algorithm = make_algorithm(policy=policy, policy_cfg=sac_cfg, algorithm_name="sac")
+    algorithm = make_algorithm(cfg=SACAlgorithmConfig.from_policy_config(sac_cfg), policy=policy)
     assert isinstance(algorithm, SACAlgorithm)
     assert algorithm.optimizers == {}
 
