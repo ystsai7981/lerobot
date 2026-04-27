@@ -39,6 +39,7 @@ from lerobot.processor import (
     GymHILAdapterProcessorStep,
     ImageCropResizeProcessorStep,
     InterventionActionProcessorStep,
+    LeaderArmInterventionStep,
     MapDeltaActionToRobotActionStep,
     MapTensorToDeltaActionDictStep,
     Numpy2TorchActionProcessorStep,
@@ -481,14 +482,37 @@ def make_processors(
     env_pipeline_steps.append(AddBatchDimensionProcessorStep())
     env_pipeline_steps.append(DeviceProcessorStep(device=device))
 
-    action_pipeline_steps = [
+    action_pipeline_steps: list = [
         AddTeleopActionAsComplimentaryDataStep(teleop_device=teleop_device),
         AddTeleopEventsAsInfoStep(teleop_device=teleop_device),
-        InterventionActionProcessorStep(
-            use_gripper=cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else False,
-            terminate_on_success=terminate_on_success,
-        ),
     ]
+
+    use_gripper_for_intervention = (
+        cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else False
+    )
+
+    # Leader-arm intervention: convert raw leader joints in `teleop_action`
+    # into a 4-D EE-delta dict before the override step consumes it.
+    if (
+        getattr(cfg.processor, "control_mode", "gamepad") == "leader"
+        and cfg.processor.inverse_kinematics is not None
+        and kinematics_solver is not None
+    ):
+        action_pipeline_steps.append(
+            LeaderArmInterventionStep(
+                kinematics=kinematics_solver,
+                motor_names=motor_names,
+                end_effector_step_sizes=cfg.processor.inverse_kinematics.end_effector_step_sizes,
+                use_gripper=use_gripper_for_intervention,
+            )
+        )
+
+    action_pipeline_steps.append(
+        InterventionActionProcessorStep(
+            use_gripper=use_gripper_for_intervention,
+            terminate_on_success=terminate_on_success,
+        )
+    )
 
     # Replace InverseKinematicsProcessor with new kinematic processors
     if cfg.processor.inverse_kinematics is not None and kinematics_solver is not None:
