@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from lerobot.configs.default import DatasetConfig
 from lerobot.configs.train import TrainPipelineConfig
 from lerobot.rl.algorithms.configs import RLAlgorithmConfig
+from lerobot.rl.algorithms.factory import make_algorithm_config
 from lerobot.rl.algorithms.sac import SACAlgorithmConfig  # noqa: F401
 
 
@@ -45,8 +46,7 @@ class TrainRLServerPipelineConfig(TrainPipelineConfig):
         super().validate()
 
         if self.algorithm is None:
-            sac_cls = RLAlgorithmConfig.get_choice_class("sac")
-            self.algorithm = sac_cls()
+            self.algorithm = make_algorithm_config("sac")
 
         # The pipeline owns the policy config; inject it so the algorithm can
         # introspect policy architecture (e.g. ``num_discrete_actions``).

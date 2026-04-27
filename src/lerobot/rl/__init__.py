@@ -24,7 +24,10 @@ require_package("grpcio", extra="hilserl", import_name="grpc")
 
 from .algorithms.base import RLAlgorithm as RLAlgorithm
 from .algorithms.configs import RLAlgorithmConfig as RLAlgorithmConfig, TrainingStats as TrainingStats
-from .algorithms.factory import make_algorithm as make_algorithm
+from .algorithms.factory import (
+    make_algorithm as make_algorithm,
+    make_algorithm_config as make_algorithm_config,
+)
 from .algorithms.sac import SACAlgorithm as SACAlgorithm, SACAlgorithmConfig as SACAlgorithmConfig
 from .buffer import ReplayBuffer as ReplayBuffer
 from .data_sources import DataMixer as DataMixer, OnlineOfflineMixer as OnlineOfflineMixer
@@ -35,6 +38,7 @@ __all__ = [
     "RLAlgorithmConfig",
     "TrainingStats",
     "make_algorithm",
+    "make_algorithm_config",
     "SACAlgorithm",
     "SACAlgorithmConfig",
     "RLTrainer",
