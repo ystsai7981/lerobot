@@ -30,10 +30,11 @@ from __future__ import annotations
 import json
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..config import Module3Config
+from ..frames import FrameProvider, null_provider, to_image_blocks
 from ..prompts import load as load_prompt
 from ..reader import EpisodeRecord
 from ..staging import EpisodeStaging
@@ -83,6 +84,7 @@ class GeneralVqaModule:
     vlm: VlmClient
     config: Module3Config
     seed: int = 1729
+    frame_provider: FrameProvider = field(default_factory=null_provider)
 
     @property
     def enabled(self) -> bool:
@@ -100,7 +102,7 @@ class GeneralVqaModule:
         for idx in anchor_idx:
             ts = float(record.frame_timestamps[idx])
             qtype = rng.choice(self.config.question_types)
-            qa = self._generate_one(record, qtype)
+            qa = self._generate_one(record, qtype, ts)
             if qa is None:
                 continue
             question, answer = qa
@@ -124,12 +126,16 @@ class GeneralVqaModule:
             )
         staging.write("module_3", rows)
 
-    def _generate_one(self, record: EpisodeRecord, question_type: str) -> tuple[str, dict[str, Any]] | None:
+    def _generate_one(
+        self, record: EpisodeRecord, question_type: str, frame_timestamp: float
+    ) -> tuple[str, dict[str, Any]] | None:
         prompt = load_prompt("module_3_vqa").format(
             episode_task=record.episode_task,
             question_type=question_type,
         )
-        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        images = self.frame_provider.frames_at(record, [frame_timestamp])
+        content = [*to_image_blocks(images), {"type": "text", "text": prompt}]
+        messages = [{"role": "user", "content": content}]
         result = self.vlm.generate_json([messages])[0]
         if not isinstance(result, dict):
             return None

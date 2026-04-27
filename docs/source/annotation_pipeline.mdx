@@ -30,10 +30,17 @@ Install the extra and invoke the console script:
 ```bash
 uv sync --extra annotations
 uv run lerobot-annotate \
-  --root=/path/to/dataset \
-  --vlm.backend=transformers \
-  --vlm.model_id=Qwen/Qwen2.5-VL-7B-Instruct
+  --repo_id=imstevenpmwork/super_poulain_draft \
+  --vlm.backend=vllm \
+  --vlm.model_id=Qwen/Qwen3.6-27B-FP8 \
+  --vlm.tensor_parallel_size=2
 ```
+
+The pipeline attaches camera keyframes to every Module 1/2/3 prompt by
+default, decoded from the dataset's first `observation.images.*` stream.
+Override with `--vlm.camera_key=observation.images.<name>` to pin a
+specific viewpoint. Datasets with no video tracks fall back to text-only
+prompts automatically.
 
 The executor picks `LocalPipelineExecutor` for small datasets and
 `SlurmPipelineExecutor` for large ones based on

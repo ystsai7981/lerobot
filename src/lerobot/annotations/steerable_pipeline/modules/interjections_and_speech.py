@@ -34,10 +34,11 @@ from __future__ import annotations
 
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..config import Module2Config
+from ..frames import FrameProvider, null_provider, to_image_blocks
 from ..prompts import load as load_prompt
 from ..reader import EpisodeRecord
 from ..staging import EpisodeStaging
@@ -58,6 +59,7 @@ class InterjectionsAndSpeechModule:
     vlm: VlmClient
     config: Module2Config
     seed: int = 1729
+    frame_provider: FrameProvider = field(default_factory=null_provider)
 
     @property
     def enabled(self) -> bool:
@@ -106,7 +108,9 @@ class InterjectionsAndSpeechModule:
                 current_subtask=current_subtask,
                 timestamp=t_snap,
             )
-            messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            images = self.frame_provider.frames_at(record, [t_snap])
+            content = [*to_image_blocks(images), {"type": "text", "text": prompt}]
+            messages = [{"role": "user", "content": content}]
             result = self.vlm.generate_json([messages])[0]
             if not isinstance(result, dict):
                 continue

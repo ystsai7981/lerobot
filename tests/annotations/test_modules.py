@@ -18,7 +18,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from lerobot.annotations.steerable_pipeline.config import (
     Module1Config,
@@ -32,8 +34,29 @@ from lerobot.annotations.steerable_pipeline.modules import (
 )
 from lerobot.annotations.steerable_pipeline.reader import iter_episodes
 from lerobot.annotations.steerable_pipeline.staging import EpisodeStaging
+from lerobot.annotations.steerable_pipeline.vlm_client import StubVlmClient
 
 from ._helpers import make_canned_responder
+
+
+@dataclass
+class _StubFrameProvider:
+    """Returns one sentinel object per requested timestamp."""
+
+    sentinel: Any = field(default_factory=lambda: object())
+    calls: list[tuple[int, tuple[float, ...]]] = field(default_factory=list)
+
+    def frames_at(self, record, timestamps):
+        self.calls.append((record.episode_index, tuple(timestamps)))
+        return [self.sentinel] * len(timestamps)
+
+
+def _spy_responder(captured: list[list[dict[str, Any]]], reply: Any):
+    def responder(messages):
+        captured.append(list(messages))
+        return reply
+
+    return StubVlmClient(responder=responder)
 
 
 def test_module1_plan_memory_subtask_smoke(fixture_dataset_root: Path, tmp_path: Path) -> None:
@@ -143,6 +166,39 @@ def test_module3_vqa_unique_per_frame(single_episode_root: Path, tmp_path: Path)
     frame_set = set(record.frame_timestamps)
     for ts in user_ts + assistant_ts:
         assert ts in frame_set
+
+
+def test_module3_attaches_frame_image_block_to_prompt(single_episode_root: Path, tmp_path: Path) -> None:
+    """Each VQA prompt must carry a single image block at the emission frame."""
+    captured: list[list[dict[str, Any]]] = []
+    payload = {
+        "question": "How many cups?",
+        "answer": {"label": "cup", "count": 1},
+    }
+    provider = _StubFrameProvider()
+    module = GeneralVqaModule(
+        vlm=_spy_responder(captured, payload),
+        config=Module3Config(vqa_emission_hz=1.0, K=1),
+        seed=0,
+        frame_provider=provider,
+    )
+    record = next(iter_episodes(single_episode_root))
+    staging = EpisodeStaging(tmp_path / "stage", record.episode_index)
+    module.run_episode(record, staging)
+
+    assert captured, "no VLM calls made"
+    for messages in captured:
+        content = messages[0]["content"]
+        image_blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "image"]
+        text_blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "text"]
+        assert len(image_blocks) == 1, f"expected 1 image block per VQA prompt, got {content}"
+        assert image_blocks[0]["image"] is provider.sentinel
+        assert len(text_blocks) == 1
+    # provider was called once per emission with the exact emission timestamp
+    for ep_idx, ts_tuple in provider.calls:
+        assert ep_idx == record.episode_index
+        assert len(ts_tuple) == 1
+        assert ts_tuple[0] in record.frame_timestamps
 
 
 def test_module3_assistant_content_is_valid_json(single_episode_root: Path, tmp_path: Path) -> None:

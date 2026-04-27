@@ -148,7 +148,7 @@ def _make_vllm_client(config: VlmConfig) -> VlmClient:
         raise ImportError(
             "vllm is required for backend='vllm'. Install with `pip install lerobot[annotations]`."
         ) from exc
-    llm = LLM(model=config.model_id)
+    llm = LLM(model=config.model_id, tensor_parallel_size=config.tensor_parallel_size)
 
     def _gen(batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float) -> list[str]:
         params = SamplingParams(

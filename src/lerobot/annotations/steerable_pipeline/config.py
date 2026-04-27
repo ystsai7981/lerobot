@@ -54,12 +54,16 @@ class Module3Config:
 class VlmConfig:
     """Shared Qwen-VL client configuration."""
 
-    backend: Literal["vllm", "transformers", "stub"] = "transformers"
-    model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    backend: Literal["vllm", "transformers", "stub"] = "vllm"
+    model_id: str = "Qwen/Qwen3.6-27B-FP8"
     max_new_tokens: int = 512
     temperature: float = 0.2
     json_mode: bool = True
     batch_size: int = 4
+    tensor_parallel_size: int = 1
+    camera_key: str | None = None
+    """Override the camera stream used for keyframe attachment. ``None`` picks
+    the first ``observation.images.*`` key the dataset declares."""
 
 
 @dataclass

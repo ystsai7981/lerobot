@@ -33,6 +33,7 @@ from pathlib import Path
 
 from lerobot.annotations.steerable_pipeline.config import AnnotationPipelineConfig
 from lerobot.annotations.steerable_pipeline.executor import Executor
+from lerobot.annotations.steerable_pipeline.frames import make_frame_provider
 from lerobot.annotations.steerable_pipeline.modules import (
     GeneralVqaModule,
     InterjectionsAndSpeechModule,
@@ -64,9 +65,12 @@ def annotate(cfg: AnnotationPipelineConfig) -> None:
     logger.info("annotate: root=%s", root)
 
     vlm = make_vlm_client(cfg.vlm)
-    module_1 = PlanSubtasksMemoryModule(vlm=vlm, config=cfg.module_1)
-    module_2 = InterjectionsAndSpeechModule(vlm=vlm, config=cfg.module_2, seed=cfg.seed)
-    module_3 = GeneralVqaModule(vlm=vlm, config=cfg.module_3, seed=cfg.seed)
+    frame_provider = make_frame_provider(root, camera_key=cfg.vlm.camera_key)
+    module_1 = PlanSubtasksMemoryModule(vlm=vlm, config=cfg.module_1, frame_provider=frame_provider)
+    module_2 = InterjectionsAndSpeechModule(
+        vlm=vlm, config=cfg.module_2, seed=cfg.seed, frame_provider=frame_provider
+    )
+    module_3 = GeneralVqaModule(vlm=vlm, config=cfg.module_3, seed=cfg.seed, frame_provider=frame_provider)
     writer = LanguageColumnsWriter()
     validator = StagingValidator()
 
