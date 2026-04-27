@@ -8,7 +8,7 @@ from lerobot.configs.recipe import MessageTurn, TrainingRecipe
 from lerobot.datasets.language_render import active_at, emitted_at, nth_next, nth_prev, render_sample
 
 
-def row(role, content, style, timestamp, tool_calls=None):
+def persistent_row(role, content, style, timestamp, tool_calls=None):
     return {
         "role": role,
         "content": content,
@@ -18,22 +18,32 @@ def row(role, content, style, timestamp, tool_calls=None):
     }
 
 
+def event_row(role, content, style, tool_calls=None):
+    return {
+        "role": role,
+        "content": content,
+        "style": style,
+        "tool_calls": tool_calls,
+    }
+
+
 PERSISTENT = [
-    row("assistant", "plan 0", "plan", 0.0),
-    row("assistant", "memory 0", "memory", 0.0),
-    row("assistant", "subtask 0", "subtask", 0.0),
-    row("assistant", "memory 1", "memory", 1.0),
-    row("assistant", "subtask 1", "subtask", 1.0),
+    persistent_row("assistant", "plan 0", "plan", 0.0),
+    persistent_row("assistant", "memory 0", "memory", 0.0),
+    persistent_row("assistant", "subtask 0", "subtask", 0.0),
+    persistent_row("assistant", "memory 1", "memory", 1.0),
+    persistent_row("assistant", "subtask 1", "subtask", 1.0),
 ]
-EVENTS = [
-    row("user", "what is visible?", "vqa", 1.0),
-    row("assistant", '{"count": 2}', "vqa", 1.0),
-    row("user", "skip wiping", "interjection", 2.0),
-    row(
+EVENTS_AT_1 = [
+    event_row("user", "what is visible?", "vqa"),
+    event_row("assistant", '{"count": 2}', "vqa"),
+]
+EVENTS_AT_2 = [
+    event_row("user", "skip wiping", "interjection"),
+    event_row(
         "assistant",
         None,
         None,
-        2.0,
         [{"type": "function", "function": {"name": "say", "arguments": {"text": "Skipping wiping."}}}],
     ),
 ]
@@ -42,9 +52,9 @@ EVENTS = [
 def test_resolver_temporal_semantics():
     assert active_at(0.5, persistent=PERSISTENT, style="subtask")["content"] == "subtask 0"
     assert active_at(1.0, persistent=PERSISTENT, style="subtask")["content"] == "subtask 1"
-    assert emitted_at(0.5, persistent=PERSISTENT, events=EVENTS, style="vqa", role="assistant") is None
+    assert emitted_at(0.5, persistent=PERSISTENT, events=[], style="vqa", role="assistant") is None
     assert (
-        emitted_at(1.0, persistent=PERSISTENT, events=EVENTS, style="vqa", role="assistant")["content"]
+        emitted_at(1.0, persistent=PERSISTENT, events=EVENTS_AT_1, style="vqa", role="assistant")["content"]
         == '{"count": 2}'
     )
 
@@ -87,7 +97,7 @@ def test_substitution_if_present_multimodal_and_tool_calls():
     rendered = render_sample(
         recipe=recipe,
         persistent=PERSISTENT,
-        events=EVENTS,
+        events=EVENTS_AT_2,
         t=2.0,
         sample_idx=0,
         task="clean kitchen",
@@ -114,7 +124,9 @@ def test_exact_event_miss_returns_none_when_target_skips():
         ]
     )
 
-    assert render_sample(recipe=recipe, persistent=PERSISTENT, events=EVENTS, t=0.0, sample_idx=0) is None
+    assert (
+        render_sample(recipe=recipe, persistent=PERSISTENT, events=EVENTS_AT_2, t=0.0, sample_idx=0) is None
+    )
 
 
 def test_deterministic_blend_sampling():
@@ -138,10 +150,10 @@ def test_deterministic_blend_sampling():
     )
 
     first = render_sample(
-        recipe=recipe, persistent=PERSISTENT, events=EVENTS, t=0.0, sample_idx=123, task="x"
+        recipe=recipe, persistent=PERSISTENT, events=EVENTS_AT_2, t=0.0, sample_idx=123, task="x"
     )
     second = render_sample(
-        recipe=recipe, persistent=PERSISTENT, events=EVENTS, t=0.0, sample_idx=123, task="x"
+        recipe=recipe, persistent=PERSISTENT, events=EVENTS_AT_2, t=0.0, sample_idx=123, task="x"
     )
     assert first == second
 

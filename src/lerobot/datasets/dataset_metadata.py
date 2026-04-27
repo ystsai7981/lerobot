@@ -51,7 +51,7 @@ from .utils import (
 )
 from .video_utils import get_video_info
 
-CODEBASE_VERSION = "v3.1"
+CODEBASE_VERSION = "v3.0"
 
 
 class LeRobotDatasetMetadata:

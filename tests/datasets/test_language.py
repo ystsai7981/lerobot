@@ -22,11 +22,14 @@ from lerobot.datasets.utils import DEFAULT_DATA_PATH
 
 
 def test_language_arrow_schema_has_expected_fields():
-    row_type = language_persistent_arrow_type().value_type
+    persistent_row_type = language_persistent_arrow_type().value_type
+    event_row_type = language_events_arrow_type().value_type
 
-    assert isinstance(row_type, pa.StructType)
-    assert row_type.names == ["role", "content", "style", "timestamp", "tool_calls"]
-    assert language_events_arrow_type().value_type == row_type
+    assert isinstance(persistent_row_type, pa.StructType)
+    assert persistent_row_type.names == ["role", "content", "style", "timestamp", "tool_calls"]
+
+    assert isinstance(event_row_type, pa.StructType)
+    assert event_row_type.names == ["role", "content", "style", "tool_calls"]
 
 
 def test_style_registry_routes_columns():
@@ -72,7 +75,6 @@ def test_lerobot_dataset_passes_language_columns_through(tmp_path, empty_lerobot
         "role": "user",
         "content": "what is visible?",
         "style": "vqa",
-        "timestamp": 0.0,
         "tool_calls": None,
     }
     data_path = root / DEFAULT_DATA_PATH.format(chunk_index=0, file_index=0)

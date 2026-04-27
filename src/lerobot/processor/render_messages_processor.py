@@ -31,10 +31,19 @@ from .pipeline import ProcessorStep, ProcessorStepRegistry
 @dataclass
 @ProcessorStepRegistry.register(name="render_messages_processor")
 class RenderMessagesStep(ProcessorStep):
+    """Processor step that turns raw language columns into rendered chat messages.
+
+    Reads ``language_persistent`` and ``language_events`` from the transition's
+    complementary data, renders them through ``recipe`` at the sample timestamp,
+    and replaces the raw columns with the resulting ``messages`` /
+    ``message_streams`` / ``target_message_indices`` keys.
+    """
+
     recipe: TrainingRecipe
     dataset_ctx: Any | None = None
 
     def __call__(self, transition: EnvTransition) -> EnvTransition | None:
+        """Render messages for a single transition; return ``None`` to drop it."""
         complementary_data = transition.get(TransitionKey.COMPLEMENTARY_DATA) or {}
         persistent = complementary_data.get(LANGUAGE_PERSISTENT) or []
         events = complementary_data.get(LANGUAGE_EVENTS) or []

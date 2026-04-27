@@ -26,6 +26,12 @@ _PYTHON_LIST_KEYS = {"messages", "message_streams", "target_message_indices"}
 
 
 def lerobot_collate_fn(batch: list[dict[str, Any] | None]) -> dict[str, Any] | None:
+    """Collate function that preserves Python-list and language fields as lists.
+
+    Drops ``None`` samples (e.g. recipes that yielded no target message), keeps
+    rendered-message and language fields as plain Python lists, and delegates
+    every other key to PyTorch's ``default_collate``.
+    """
     batch = [sample for sample in batch if sample is not None]
     if not batch:
         return None

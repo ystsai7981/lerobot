@@ -47,6 +47,13 @@ def active_at(
     role: str | None = None,
     tool_name: str | None = None,
 ) -> LanguageRow | None:
+    """Return the persistent row of ``style`` that is active at time ``t``.
+
+    A persistent row is "active" at ``t`` when its own ``timestamp`` is the
+    most recent one ``<= t`` for the given ``style``/``role``/``tool_name``
+    selector. ``events`` is accepted for resolver-signature uniformity but is
+    not consulted: only persistent styles are valid here.
+    """
     _validate_persistent_resolver("active_at", style)
     matches = _matching_rows(persistent, style=style, role=role, tool_name=tool_name)
     matches = [row for row in matches if _timestamp(row) <= t]
@@ -62,14 +69,25 @@ def emitted_at(
     role: str | None = None,
     tool_name: str | None = None,
 ) -> LanguageRow | None:
+    """Return the row of ``style`` emitted at exactly time ``t``.
+
+    For persistent styles, this matches persistent rows whose own ``timestamp``
+    equals ``t``. For event styles, the ``events`` list is assumed to come from
+    the dataset row at frame ``t`` (event rows carry no timestamp of their own),
+    so all matching event rows are considered emitted at ``t``.
+    """
     column = column_for_style(style)
-    rows = persistent if column == LANGUAGE_PERSISTENT else events
-    matches = [
-        row
-        for row in _matching_rows(rows, style=style, role=role, tool_name=tool_name)
-        if _timestamp(row) == t
-    ]
-    return _select_exact(matches, style=style, role=role, tool_name=tool_name)
+    if column == LANGUAGE_PERSISTENT:
+        matches = [
+            row
+            for row in _matching_rows(persistent, style=style, role=role, tool_name=tool_name)
+            if _timestamp(row) == t
+        ]
+        return _select_one(
+            matches, style=style, role=role, tool_name=tool_name, sort_key=_persistent_sort_key
+        )
+    matches = _matching_rows(events, style=style, role=role, tool_name=tool_name)
+    return _select_one(matches, style=style, role=role, tool_name=tool_name, sort_key=_event_sort_key)
 
 
 def nth_prev(
@@ -82,6 +100,12 @@ def nth_prev(
     role: str | None = None,
     tool_name: str | None = None,
 ) -> LanguageRow | None:
+    """Return the persistent row that was active ``offset`` steps before ``t``.
+
+    Walks back through chronologically sorted persistent rows of ``style``
+    (filtered by optional ``role``/``tool_name``) and returns the one ``offset``
+    positions before the row active at ``t``. Only valid for persistent styles.
+    """
     return _nth_relative(
         t,
         persistent=persistent,
@@ -103,6 +127,12 @@ def nth_next(
     role: str | None = None,
     tool_name: str | None = None,
 ) -> LanguageRow | None:
+    """Return the persistent row that becomes active ``offset`` steps after ``t``.
+
+    Walks forward through chronologically sorted persistent rows of ``style``
+    (filtered by optional ``role``/``tool_name``) and returns the one ``offset``
+    positions after the row active at ``t``. Only valid for persistent styles.
+    """
     return _nth_relative(
         t,
         persistent=persistent,
@@ -124,6 +154,12 @@ def render_sample(
     task: str | None = None,
     dataset_ctx: Any | None = None,
 ) -> RenderedMessages | None:
+    """Render the chat-style messages for a single dataset sample.
+
+    Resolves the recipe's bindings against ``persistent`` and ``events`` rows
+    at frame timestamp ``t``, then expands the recipe's message templates.
+    Returns ``None`` if the resolved sample contains no target message.
+    """
     persistent_rows = _normalize_rows(persistent or [])
     event_rows = _normalize_rows(events or [])
     selected_recipe = _select_recipe(recipe, sample_idx)
@@ -335,7 +371,10 @@ def _nth_relative(
     if abs(offset) < 1:
         raise ValueError(f"{resolver_name} offset must be non-zero.")
 
-    rows = _sort_rows(_matching_rows(persistent, style=style, role=role, tool_name=tool_name))
+    rows = sorted(
+        _matching_rows(persistent, style=style, role=role, tool_name=tool_name),
+        key=_persistent_sort_key,
+    )
     if not rows:
         return None
 
@@ -387,22 +426,24 @@ def _select_latest(
 ) -> LanguageRow | None:
     if not rows:
         return None
-    rows = _sort_rows(rows)
+    rows = sorted(rows, key=_persistent_sort_key)
     latest_ts = _timestamp(rows[-1])
-    return _select_exact(
+    return _select_one(
         [row for row in rows if _timestamp(row) == latest_ts],
         style=style,
         role=role,
         tool_name=tool_name,
+        sort_key=_persistent_sort_key,
     )
 
 
-def _select_exact(
+def _select_one(
     rows: Sequence[LanguageRow],
     *,
     style: str | None,
     role: str | None,
     tool_name: str | None,
+    sort_key: Any,
 ) -> LanguageRow | None:
     if not rows:
         return None
@@ -410,11 +451,15 @@ def _select_exact(
         raise ValueError(
             f"Ambiguous resolver for style={style!r}; add role=... or tool_name=... to disambiguate."
         )
-    return _sort_rows(rows)[0]
+    return sorted(rows, key=sort_key)[0]
 
 
-def _sort_rows(rows: Sequence[LanguageRow]) -> list[LanguageRow]:
-    return sorted(rows, key=lambda row: (_timestamp(row), row.get("style") or "", row.get("role") or ""))
+def _persistent_sort_key(row: LanguageRow) -> tuple[float, str, str]:
+    return (_timestamp(row), row.get("style") or "", row.get("role") or "")
+
+
+def _event_sort_key(row: LanguageRow) -> tuple[str, str]:
+    return (row.get("style") or "", row.get("role") or "")
 
 
 def _timestamp(row: LanguageRow) -> float:

@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 MessageRole = Literal["user", "assistant", "system", "tool"]
 MessageStream = Literal["high_level", "low_level"]
@@ -35,12 +35,21 @@ DEFAULT_BINDINGS = {
 }
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-_VALID_ROLES = {"user", "assistant", "system", "tool"}
-_VALID_STREAMS = {"high_level", "low_level"}
+_VALID_ROLES = frozenset(get_args(MessageRole))
+_VALID_STREAMS = frozenset(get_args(MessageStream))
 
 
 @dataclass
 class MessageTurn:
+    """A single chat-style turn in a recipe template.
+
+    ``content`` may be a plain string, a list of HF-style multimodal blocks, or
+    ``None`` when ``tool_calls_from`` supplies tool-call payloads instead.
+    ``stream`` tags the turn for downstream filtering, ``target`` flags it as a
+    training target, and ``if_present`` skips the turn when the named binding
+    resolves to ``None``.
+    """
+
     role: MessageRole
     content: str | list[dict[str, Any]] | None = None
     stream: MessageStream | None = None
@@ -71,6 +80,13 @@ class MessageTurn:
 
 @dataclass
 class TrainingRecipe:
+    """A recipe describing how to render training samples from language rows.
+
+    A recipe is either a *message recipe* (``messages`` plus optional
+    ``bindings``) or a *blend recipe* (``blend`` mapping names to weighted
+    sub-recipes). ``weight`` is only meaningful inside a blend.
+    """
+
     messages: list[MessageTurn] | None = None
     bindings: dict[str, str] | None = None
     blend: dict[str, TrainingRecipe] | None = None
@@ -164,4 +180,5 @@ def _placeholders_in_content(content: str | list[dict[str, Any]] | None) -> set[
 
 
 def load_recipe(path: str | Path) -> TrainingRecipe:
+    """Load a :class:`TrainingRecipe` from a YAML file at ``path``."""
     return TrainingRecipe.from_yaml(path)
