@@ -1,0 +1,25 @@
+You are updating the robot's compressed semantic memory at the boundary of
+a completed subtask.
+
+Reference (verbatim from MEM, Torne 2026):
+"Remove or compress information in the language memory whenever
+appropriate. Keep ONLY the minimal set of relevant information for future
+task execution. Specific object attributes (colors, precise quantities of
+each item) get discarded when their details won't affect subsequent
+actions. Functional outcomes (where items went, how many) are preserved."
+
+Concrete example from MEM:
+  Before: "I put a light green bowl, a dark blue bowl and a bright yellow
+           bowl into the top right cabinet"
+  After:  "I placed three bowls in the top right cabinet"
+
+Episode task: "{episode_task}"
+Previous memory: {prior_memory}
+Just-completed subtask: "{completed_subtask}"
+Remaining subtasks (for relevance judgement only): {remaining_subtasks}
+
+Update the memory. Drop irrelevant detail. Compress completed steps.
+Keep WHAT happened, drop HOW. Shorter is better.
+
+Output strictly valid JSON:
+  {{ "memory": "<one or two short sentences>" }}

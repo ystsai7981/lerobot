@@ -1,0 +1,31 @@
+You are labeling a teleoperated robot demonstration.
+
+The user originally asked: "{episode_task}"
+
+You will be shown {num_keyframes} keyframes spaced evenly across the
+episode. Decompose the demonstration into a list of consecutive atomic
+subtasks the robot performs.
+
+Authoring rules — based on Hi Robot (Shi 2025) atom granularity and Pi0.7
+(Physical Intelligence 2025) "how, not what" detail:
+
+- Each subtask is one atomic skill the low-level policy can execute, e.g.
+  "pick up one piece of lettuce", "place the bowl into the box",
+  "move the right arm to the left".
+- Capture HOW the subtask is performed, not only WHAT — e.g. prefer
+  "grasp the handle of the sponge with the left hand" to "pick up the
+  sponge".
+- Subtasks are non-overlapping and must cover the full episode in order.
+- Each subtask spans at least {min_subtask_seconds} seconds.
+- Do not exceed {max_steps} subtasks total.
+- Every subtask's [start_time, end_time] must lie within
+  [0.0, {episode_duration}] seconds.
+
+Output strictly valid JSON of shape:
+
+  {{
+    "subtasks": [
+      {{"text": "<how-not-what>", "start": <float>, "end": <float>}},
+      ...
+    ]
+  }}

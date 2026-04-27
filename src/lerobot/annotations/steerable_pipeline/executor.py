@@ -1,0 +1,163 @@
+#!/usr/bin/env python
+
+# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Executor selection: local vs SLURM via datatrove.
+
+The executor plans **four phases** with the dependency order from the plan:
+
+    phase 1: Module 1 (plan + subtasks + memory)
+    phase 2: Module 2 (interjections + speech)
+    phase 3: Module 1 plan-update pass — re-runs plan emission at every
+             interjection timestamp produced by phase 2
+    phase 4: Module 3 (VQA)
+    phase 5: validator
+    phase 6: writer
+
+Phase 3 is why ``executor.py`` documents the dependency: Module 1 must be
+re-entered after Module 2 to refresh ``plan`` rows at interjection times.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .config import AnnotationPipelineConfig, ExecutorConfig
+from .reader import EpisodeRecord, iter_episodes
+from .staging import EpisodeStaging
+from .validator import StagingValidator
+from .writer import LanguageColumnsWriter
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PhaseResult:
+    """Summary of one pipeline phase across all episodes."""
+
+    name: str
+    episodes_processed: int
+    episodes_skipped: int
+
+
+@dataclass
+class PipelineRunSummary:
+    """Aggregated result returned by :meth:`Executor.run`."""
+
+    phases: list[PhaseResult]
+    written_paths: list[Path]
+    validation_report: Any  # ValidationReport, kept Any to avoid import cycle
+
+
+def select_executor_class(num_episodes: int, config: ExecutorConfig) -> str:
+    """Return ``"local"`` or ``"slurm"`` based on the threshold.
+
+    The plan's "executor selection threshold" lives in
+    :class:`ExecutorConfig.auto_threshold`. ``force_local`` always wins.
+    """
+    if config.force_local:
+        return "local"
+    return "local" if num_episodes <= config.auto_threshold else "slurm"
+
+
+@dataclass
+class Executor:
+    """Run all four phases over a dataset root.
+
+    The executor is intentionally framework-agnostic: by default it runs the
+    phases inline (suitable for tests, small datasets, and the CLI's
+    ``--force-local`` mode). It will optionally hand off to datatrove's
+    :class:`LocalPipelineExecutor` or :class:`SlurmPipelineExecutor` when those
+    are installed and the dataset is large enough to benefit from them.
+
+    Tests construct the executor directly with stub modules.
+    """
+
+    config: AnnotationPipelineConfig
+    module_1: Any  # PlanSubtasksMemoryModule
+    module_2: Any  # InterjectionsAndSpeechModule
+    module_3: Any  # GeneralVqaModule
+    writer: LanguageColumnsWriter
+    validator: StagingValidator
+
+    def run(self, root: Path) -> PipelineRunSummary:
+        records = list(iter_episodes(root, only_episodes=self.config.only_episodes))
+        n = len(records)
+        if n == 0:
+            raise ValueError(f"No episodes found under {root}/data/")
+
+        executor_kind = select_executor_class(n, self.config.executor)
+        logger.info("annotate: %d episodes; executor=%s", n, executor_kind)
+
+        staging_dir = self.config.resolved_staging_dir(root)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
+        phases: list[PhaseResult] = []
+
+        # Phase 1: Module 1 (plan + subtasks + memory)
+        phases.append(self._run_module_phase("module_1", records, staging_dir, self.module_1))
+        # Phase 2: Module 2 (interjections + speech)
+        phases.append(self._run_module_phase("module_2", records, staging_dir, self.module_2))
+        # Phase 3: Module 1 plan-update pass at interjection timestamps.
+        phases.append(self._run_plan_update_phase(records, staging_dir))
+        # Phase 4: Module 3 (VQA)
+        phases.append(self._run_module_phase("module_3", records, staging_dir, self.module_3))
+
+        report = self.validator.validate(records, staging_dir)
+        if not report.ok and not self.config.skip_validation:
+            raise RuntimeError(f"Staging validation failed: {report.summary()}")
+
+        written = self.writer.write_all(records, staging_dir, root)
+        return PipelineRunSummary(phases=phases, written_paths=written, validation_report=report)
+
+    def _run_module_phase(
+        self,
+        name: str,
+        records: list[EpisodeRecord],
+        staging_dir: Path,
+        module: Any,
+    ) -> PhaseResult:
+        if not module.enabled:
+            return PhaseResult(name=name, episodes_processed=0, episodes_skipped=len(records))
+        processed = 0
+        for record in records:
+            staging = EpisodeStaging(staging_dir, record.episode_index)
+            module.run_episode(record, staging)
+            processed += 1
+        return PhaseResult(name=name, episodes_processed=processed, episodes_skipped=0)
+
+    def _run_plan_update_phase(self, records: list[EpisodeRecord], staging_dir: Path) -> PhaseResult:
+        """Re-emit ``plan`` rows at each interjection timestamp from Module 2.
+
+        Module 1 owns the prompt; Module 2 produced the timestamps. This phase
+        therefore calls back into Module 1 with the interjection timestamps so
+        Module 1's existing prompt path is reused.
+        """
+        if not self.module_1.enabled or not self.module_2.enabled:
+            return PhaseResult(
+                name="module_1_plan_update", episodes_processed=0, episodes_skipped=len(records)
+            )
+        processed = 0
+        for record in records:
+            staging = EpisodeStaging(staging_dir, record.episode_index)
+            interjection_times = [
+                row["timestamp"] for row in staging.read("module_2") if row.get("style") == "interjection"
+            ]
+            if interjection_times:
+                self.module_1.run_plan_updates(record, staging, interjection_times)
+                processed += 1
+        return PhaseResult(name="module_1_plan_update", episodes_processed=processed, episodes_skipped=0)

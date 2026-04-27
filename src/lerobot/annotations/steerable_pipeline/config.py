@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+
+# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
+
+
+@dataclass
+class Module1Config:
+    """Module 1 hyperparameters: plan + subtasks + memory."""
+
+    enabled: bool = True
+    keyframes_per_episode: int = 8
+    min_subtask_seconds: float = 1.5
+    plan_max_steps: int = 8
+
+
+@dataclass
+class Module2Config:
+    """Module 2 hyperparameters: interjections + paired speech."""
+
+    enabled: bool = True
+    max_interjections_per_episode: int = 1
+    interjection_min_t: float = 2.0
+
+
+@dataclass
+class Module3Config:
+    """Module 3 hyperparameters: general VQA."""
+
+    enabled: bool = True
+    vqa_emission_hz: float = 1.0
+    K: int = 3
+    question_types: tuple[str, ...] = ("bbox", "keypoint", "count", "attribute", "spatial")
+
+
+@dataclass
+class VlmConfig:
+    """Shared Qwen-VL client configuration."""
+
+    backend: Literal["vllm", "transformers", "stub"] = "transformers"
+    model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    max_new_tokens: int = 512
+    temperature: float = 0.2
+    json_mode: bool = True
+    batch_size: int = 4
+
+
+@dataclass
+class ExecutorConfig:
+    """Executor selection and SLURM hyperparameters."""
+
+    auto_threshold: int = 32
+    force_local: bool = False
+    slurm_partition: str | None = None
+    slurm_gpus: int = 1
+    slurm_time: str = "06:00:00"
+    workers: int = 1
+
+
+@dataclass
+class AnnotationPipelineConfig:
+    """Top-level config for ``lerobot-annotate``.
+
+    Mirrors the structure of :class:`lerobot.configs.train.TrainPipelineConfig`:
+    a draccus-parsed dataclass that contains nested per-module sub-configs and
+    leaves the dataset, executor, and VLM choices independently knobbable.
+
+    Output is always in-place: the writer rewrites ``data/chunk-*/file-*.parquet``
+    in place. Multiple revisions of the same dataset live in separate copies.
+    """
+
+    repo_id: str | None = None
+    root: Path | None = None
+
+    staging_dir: Path | None = None
+    """If unset, defaults to ``<root>/.annotate_staging/``."""
+
+    seed: int = 1729
+
+    module_1: Module1Config = field(default_factory=Module1Config)
+    module_2: Module2Config = field(default_factory=Module2Config)
+    module_3: Module3Config = field(default_factory=Module3Config)
+
+    vlm: VlmConfig = field(default_factory=VlmConfig)
+    executor: ExecutorConfig = field(default_factory=ExecutorConfig)
+
+    skip_validation: bool = False
+    only_episodes: tuple[int, ...] | None = None
+
+    def resolved_staging_dir(self, root: Path) -> Path:
+        return self.staging_dir if self.staging_dir is not None else root / ".annotate_staging"

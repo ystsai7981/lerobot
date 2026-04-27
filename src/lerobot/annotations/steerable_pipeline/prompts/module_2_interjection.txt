@@ -1,0 +1,27 @@
+You are simulating a user mid-episode interruption for a robot doing:
+"{episode_task}".
+
+Synthesize ONE realistic interruption the user might say at this moment in
+the demonstration, plus the robot's verbal acknowledgement.
+
+Context (Hi Robot, Shi 2025) — interjections fall into one of these
+scenario types:
+- negative task: "actually skip X"
+- situated correction: "that's not trash"
+- specific constraint: "use less salt"
+- preference: "could you also do Y"
+
+Interruption rules:
+- Must be plausible given the current subtask context.
+- Must change the plan in a non-trivial way (a new constraint, skipped
+  step, or correction).
+- One sentence each.
+
+Current subtask context: {current_subtask}
+Time into episode: {timestamp:.2f}s
+
+Output strictly valid JSON:
+  {{
+    "interjection": "<single sentence the user says>",
+    "speech":       "<single sentence the robot speaks back>"
+  }}

@@ -200,6 +200,15 @@ hilserl = ["lerobot[transformers-dep]", "gym-hil>=0.1.13,<0.2.0", "lerobot[grpci
 async = ["lerobot[grpcio-dep]", "lerobot[matplotlib-dep]"]
 peft = ["lerobot[transformers-dep]", "lerobot[peft-dep]"]
 
+# Annotation pipeline (lerobot-annotate). datatrove is mandatory; vllm is
+# the preferred backend on Linux, with a transformers fallback elsewhere.
+annotations = [
+    "lerobot[dataset]",
+    "lerobot[transformers-dep]",
+    "datatrove>=0.4.0,<2.0.0",
+    "vllm>=0.6.0,<1.0.0; sys_platform == 'linux'",
+]
+
 # Development
 dev = ["pre-commit>=3.7.0,<5.0.0", "debugpy>=1.8.1,<1.9.0", "lerobot[grpcio-dep]", "grpcio-tools==1.73.1", "mypy>=1.19.1", "ruff>=0.14.1", "lerobot[notebook]"]
 notebook = ["jupyter>=1.0.0,<2.0.0", "ipykernel>=6.0.0,<7.0.0"]
@@ -289,6 +298,7 @@ lerobot-find-joint-limits="lerobot.scripts.lerobot_find_joint_limits:main"
 lerobot-imgtransform-viz="lerobot.scripts.lerobot_imgtransform_viz:main"
 lerobot-edit-dataset="lerobot.scripts.lerobot_edit_dataset:main"
 lerobot-setup-can="lerobot.scripts.lerobot_setup_can:main"
+lerobot-annotate="lerobot.scripts.lerobot_annotate:main"
 
 # ---------------- Tool Configurations ----------------
 [tool.setuptools.package-data]

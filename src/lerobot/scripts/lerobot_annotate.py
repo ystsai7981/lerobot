@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+
+# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""``lerobot-annotate`` — populate ``language_persistent`` and
+``language_events`` columns on a LeRobot dataset.
+
+Annotations live directly in ``data/chunk-*/file-*.parquet``: there is no
+flavor namespace and no sidecar tree. Multiple revisions of the same dataset
+mean multiple dataset copies.
+
+Example:
+
+  uv run lerobot-annotate \\
+      --root=/path/to/dataset \\
+      --vlm.backend=transformers \\
+      --vlm.model_id=Qwen/Qwen2.5-VL-7B-Instruct
+"""
+
+import logging
+from pathlib import Path
+
+from lerobot.annotations.steerable_pipeline.config import AnnotationPipelineConfig
+from lerobot.annotations.steerable_pipeline.executor import Executor
+from lerobot.annotations.steerable_pipeline.modules import (
+    GeneralVqaModule,
+    InterjectionsAndSpeechModule,
+    PlanSubtasksMemoryModule,
+)
+from lerobot.annotations.steerable_pipeline.validator import StagingValidator
+from lerobot.annotations.steerable_pipeline.vlm_client import make_vlm_client
+from lerobot.annotations.steerable_pipeline.writer import LanguageColumnsWriter
+from lerobot.configs import parser
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_root(cfg: AnnotationPipelineConfig) -> Path:
+    if cfg.root is not None:
+        return Path(cfg.root)
+    if cfg.repo_id is not None:
+        from huggingface_hub import snapshot_download
+
+        return Path(snapshot_download(repo_id=cfg.repo_id, repo_type="dataset"))
+    raise ValueError("Either --root or --repo_id must be provided.")
+
+
+@parser.wrap()
+def annotate(cfg: AnnotationPipelineConfig) -> None:
+    """Run the steerable annotation pipeline against a dataset."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    root = _resolve_root(cfg)
+    logger.info("annotate: root=%s", root)
+
+    vlm = make_vlm_client(cfg.vlm)
+    module_1 = PlanSubtasksMemoryModule(vlm=vlm, config=cfg.module_1)
+    module_2 = InterjectionsAndSpeechModule(vlm=vlm, config=cfg.module_2, seed=cfg.seed)
+    module_3 = GeneralVqaModule(vlm=vlm, config=cfg.module_3, seed=cfg.seed)
+    writer = LanguageColumnsWriter()
+    validator = StagingValidator()
+
+    executor = Executor(
+        config=cfg,
+        module_1=module_1,
+        module_2=module_2,
+        module_3=module_3,
+        writer=writer,
+        validator=validator,
+    )
+    summary = executor.run(root)
+    logger.info("annotate: wrote %d shard(s)", len(summary.written_paths))
+    for phase in summary.phases:
+        logger.info(
+            "annotate: phase=%s processed=%d skipped=%d",
+            phase.name,
+            phase.episodes_processed,
+            phase.episodes_skipped,
+        )
+    if summary.validation_report.warnings:
+        for w in summary.validation_report.warnings:
+            logger.warning(w)
+
+
+def main() -> None:
+    annotate()
+
+
+if __name__ == "__main__":
+    main()

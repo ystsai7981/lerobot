@@ -1,0 +1,10 @@
+The user just asked the robot: "{episode_task}".
+
+Generate a short verbal acknowledgement the robot would speak back before
+beginning the task. Style: confident, friendly, single short sentence.
+
+Examples (Hi Robot, Shi 2025): "Sure, I won't put cheese on it.",
+"OK, starting with the sponge.", "Got it.".
+
+Output strictly valid JSON:
+  {{ "text": "<the spoken acknowledgement>" }}
