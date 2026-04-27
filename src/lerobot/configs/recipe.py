@@ -58,6 +58,7 @@ class MessageTurn:
     tool_calls_from: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate role, stream, and content after dataclass construction."""
         if self.role not in _VALID_ROLES:
             raise ValueError(f"Unsupported message role: {self.role!r}")
         if self.stream is not None and self.stream not in _VALID_STREAMS:
@@ -75,6 +76,7 @@ class MessageTurn:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MessageTurn:
+        """Construct a :class:`MessageTurn` from a plain dictionary."""
         return cls(**data)
 
 
@@ -93,6 +95,7 @@ class TrainingRecipe:
     weight: float | None = None
 
     def __post_init__(self) -> None:
+        """Validate that exactly one of ``messages`` or ``blend`` is set."""
         if self.messages is not None and self.blend is not None:
             raise ValueError("TrainingRecipe must set only one of messages or blend.")
         if self.messages is None and self.blend is None:
@@ -105,6 +108,7 @@ class TrainingRecipe:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TrainingRecipe:
+        """Construct a :class:`TrainingRecipe` from a nested dictionary."""
         data = dict(data)
         if data.get("messages") is not None:
             data["messages"] = [
@@ -120,6 +124,7 @@ class TrainingRecipe:
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> TrainingRecipe:
+        """Load a :class:`TrainingRecipe` from a YAML file at ``path``."""
         import yaml  # type: ignore[import-untyped]
 
         with open(path) as f:
@@ -129,6 +134,7 @@ class TrainingRecipe:
         return cls.from_dict(data)
 
     def _validate_message_recipe(self) -> None:
+        """Ensure every templated binding is known and at least one turn is a target."""
         assert self.messages is not None
         known_bindings = set(DEFAULT_BINDINGS) | set(self.bindings or {}) | {"task"}
 
@@ -141,6 +147,7 @@ class TrainingRecipe:
             raise ValueError("Message recipes must contain at least one target turn.")
 
     def _validate_blend_recipe(self) -> None:
+        """Ensure each blend component is a non-empty, weighted message recipe."""
         assert self.blend is not None
         if not self.blend:
             raise ValueError("Blend recipes must contain at least one component.")
@@ -156,6 +163,7 @@ class TrainingRecipe:
                 raise ValueError(f"Blend component {name!r} must have a positive weight.")
 
     def _referenced_bindings(self, turn: MessageTurn) -> set[str]:
+        """Return the binding names that ``turn`` references via placeholders or attributes."""
         names: set[str] = set()
         if turn.if_present is not None:
             names.add(turn.if_present)
@@ -166,6 +174,7 @@ class TrainingRecipe:
 
 
 def _placeholders_in_content(content: str | list[dict[str, Any]] | None) -> set[str]:
+    """Return the set of ``${name}`` placeholders found anywhere in ``content``."""
     if content is None:
         return set()
     if isinstance(content, str):

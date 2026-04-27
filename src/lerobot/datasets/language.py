@@ -38,10 +38,12 @@ LanguageColumn = Literal["language_persistent", "language_events"]
 
 
 def _json_arrow_type() -> pa.DataType:
+    """Return the Arrow JSON type, falling back to ``string`` on older pyarrow."""
     return pa.json_() if hasattr(pa, "json_") else pa.string()
 
 
 def _json_feature() -> object:
+    """Return the HF ``datasets`` JSON feature, falling back to a string value."""
     return datasets.Json() if hasattr(datasets, "Json") else datasets.Value("string")
 
 

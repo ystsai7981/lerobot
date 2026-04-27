@@ -175,6 +175,7 @@ def render_sample(
 
 
 def _select_recipe(recipe: TrainingRecipe, sample_idx: int) -> TrainingRecipe:
+    """Pick a deterministic blend component for ``sample_idx`` (or return ``recipe``)."""
     if recipe.blend is None:
         return recipe
 
@@ -204,6 +205,7 @@ def _resolve_bindings(
     task: str | None,
     dataset_ctx: Any | None,
 ) -> dict[str, LanguageRow | str | None]:
+    """Resolve every binding in ``recipe`` (plus ``task``) at time ``t``."""
     bindings: dict[str, LanguageRow | str | None] = {"task": _resolve_task(task, dataset_ctx)}
     specs = {**DEFAULT_BINDINGS, **(recipe.bindings or {})}
     for name, spec in specs.items():
@@ -212,6 +214,7 @@ def _resolve_bindings(
 
 
 def _resolve_task(task: str | None, dataset_ctx: Any | None) -> str | None:
+    """Return ``task`` if set, otherwise look it up on ``dataset_ctx``."""
     if task is not None:
         return task
     if dataset_ctx is None:
@@ -228,6 +231,7 @@ def _resolve_spec(
     events: Sequence[LanguageRow],
     t: float,
 ) -> LanguageRow | None:
+    """Parse a single binding's resolver expression and dispatch to its function."""
     match = _RESOLVER_RE.match(spec.strip())
     if match is None:
         raise ValueError(f"Invalid resolver expression: {spec!r}")
@@ -247,6 +251,7 @@ def _resolve_spec(
 
 
 def _parse_resolver_args(args: str) -> dict[str, Any]:
+    """Parse a comma-separated resolver argument list into a kwargs dict."""
     kwargs: dict[str, Any] = {}
     if not args.strip():
         return kwargs
@@ -270,6 +275,7 @@ def _render_message_recipe(
     recipe: TrainingRecipe,
     bindings: dict[str, LanguageRow | str | None],
 ) -> RenderedMessages | None:
+    """Expand ``recipe.messages`` into rendered chat messages using ``bindings``."""
     assert recipe.messages is not None
     messages: list[dict[str, Any]] = []
     streams: list[str | None] = []
@@ -311,6 +317,7 @@ def _render_content(
     content: str | list[dict[str, Any]],
     bindings: dict[str, LanguageRow | str | None],
 ) -> str | list[dict[str, Any]]:
+    """Substitute bindings into a string or each string field of multimodal blocks."""
     if isinstance(content, str):
         return _substitute(content, bindings)
 
@@ -325,7 +332,10 @@ def _render_content(
 
 
 def _substitute(template: str, bindings: dict[str, LanguageRow | str | None]) -> str:
+    """Replace ``${name}`` placeholders in ``template`` with their bound values."""
+
     def replace(match: re.Match[str]) -> str:
+        """Resolve a single ``${name}`` match to its bound string value."""
         name = match.group(1)
         if name not in bindings:
             raise ValueError(f"Unknown template binding: {name!r}")
@@ -341,6 +351,7 @@ def _substitute(template: str, bindings: dict[str, LanguageRow | str | None]) ->
 
 
 def _validate_rendered(rendered: RenderedMessages) -> None:
+    """Sanity-check the rendered output for stream/target alignment."""
     messages = rendered["messages"]
     streams = rendered["message_streams"]
     target_indices = rendered["target_message_indices"]
@@ -367,6 +378,7 @@ def _nth_relative(
     tool_name: str | None,
     resolver_name: str,
 ) -> LanguageRow | None:
+    """Shared body for ``nth_prev`` / ``nth_next`` with signed ``offset``."""
     _validate_persistent_resolver(resolver_name, style)
     if abs(offset) < 1:
         raise ValueError(f"{resolver_name} offset must be non-zero.")
@@ -393,6 +405,7 @@ def _nth_relative(
 
 
 def _validate_persistent_resolver(resolver_name: str, style: str | None) -> None:
+    """Reject calls with missing or event-only ``style`` for persistent resolvers."""
     if style is None:
         raise ValueError(f"{resolver_name} requires a persistent style.")
     if style in EVENT_ONLY_STYLES:
@@ -408,6 +421,7 @@ def _matching_rows(
     role: str | None,
     tool_name: str | None,
 ) -> list[LanguageRow]:
+    """Return ``rows`` filtered by optional ``style``/``role``/``tool_name`` selectors."""
     return [
         row
         for row in rows
@@ -424,6 +438,7 @@ def _select_latest(
     role: str | None,
     tool_name: str | None,
 ) -> LanguageRow | None:
+    """Return the row tied for the latest ``timestamp`` (disambiguated by selectors)."""
     if not rows:
         return None
     rows = sorted(rows, key=_persistent_sort_key)
@@ -445,6 +460,7 @@ def _select_one(
     tool_name: str | None,
     sort_key: Any,
 ) -> LanguageRow | None:
+    """Return the single matching row, or raise if the selectors are ambiguous."""
     if not rows:
         return None
     if len(rows) > 1 and role is None and tool_name is None:
@@ -455,19 +471,23 @@ def _select_one(
 
 
 def _persistent_sort_key(row: LanguageRow) -> tuple[float, str, str]:
+    """Sort key for persistent rows: ``(timestamp, style, role)``."""
     return (_timestamp(row), row.get("style") or "", row.get("role") or "")
 
 
 def _event_sort_key(row: LanguageRow) -> tuple[str, str]:
+    """Sort key for event rows: ``(style, role)`` (timestamp is implicit in the frame)."""
     return (row.get("style") or "", row.get("role") or "")
 
 
 def _timestamp(row: LanguageRow) -> float:
+    """Extract a row's ``timestamp`` as a Python float (unwrapping numpy scalars)."""
     value = row["timestamp"]
     return float(value.item() if hasattr(value, "item") else value)
 
 
 def _row_has_tool_name(row: LanguageRow, tool_name: str) -> bool:
+    """Return ``True`` if any of the row's tool calls invokes ``tool_name``."""
     for tool_call in row.get("tool_calls") or []:
         if isinstance(tool_call, str):
             continue
@@ -478,6 +498,7 @@ def _row_has_tool_name(row: LanguageRow, tool_name: str) -> bool:
 
 
 def _normalize_rows(rows: Sequence[Any]) -> list[LanguageRow]:
+    """Convert pyarrow scalars / mappings into a fresh list of plain dict rows."""
     normalized = []
     for row in rows:
         if row is None:

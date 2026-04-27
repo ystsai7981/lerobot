@@ -79,10 +79,12 @@ class RenderMessagesStep(ProcessorStep):
     def transform_features(
         self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]]
     ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
+        """Pass features through unchanged; rendering only touches complementary data."""
         return features
 
 
 def _scalar(value: Any) -> float | int:
+    """Unwrap a tensor/array/single-element list into a Python scalar."""
     if hasattr(value, "item"):
         return value.item()
     if isinstance(value, list) and len(value) == 1:
