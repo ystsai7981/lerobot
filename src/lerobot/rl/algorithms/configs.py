@@ -49,6 +49,14 @@ class TrainingStats:
 class RLAlgorithmConfig(draccus.ChoiceRegistry):
     """Registry for algorithm configs."""
 
+    @property
+    def type(self) -> str:
+        """Registered name of this algorithm config (e.g. ``"sac"``)."""
+        choice_name = self.get_choice_name(self.__class__)
+        if not isinstance(choice_name, str):
+            raise TypeError(f"Expected string from get_choice_name, got {type(choice_name)}")
+        return choice_name
+
     def build_algorithm(self, policy: torch.nn.Module) -> RLAlgorithm:
         """Construct the :class:`RLAlgorithm` for this config.
 
