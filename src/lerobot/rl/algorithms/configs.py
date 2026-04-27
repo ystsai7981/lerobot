@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import abc
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -46,7 +47,7 @@ class TrainingStats:
 
 
 @dataclass
-class RLAlgorithmConfig(draccus.ChoiceRegistry):
+class RLAlgorithmConfig(draccus.ChoiceRegistry, abc.ABC):
     """Registry for algorithm configs."""
 
     @property
@@ -57,6 +58,7 @@ class RLAlgorithmConfig(draccus.ChoiceRegistry):
             raise TypeError(f"Expected string from get_choice_name, got {type(choice_name)}")
         return choice_name
 
+    @abc.abstractmethod
     def build_algorithm(self, policy: torch.nn.Module) -> RLAlgorithm:
         """Construct the :class:`RLAlgorithm` for this config.
 
@@ -65,6 +67,7 @@ class RLAlgorithmConfig(draccus.ChoiceRegistry):
         raise NotImplementedError(f"{type(self).__name__} must implement build_algorithm()")
 
     @classmethod
+    @abc.abstractmethod
     def from_policy_config(cls, policy_cfg: Any) -> RLAlgorithmConfig:
         """Build an algorithm config from a policy config.
 
