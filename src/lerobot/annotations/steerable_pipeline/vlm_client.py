@@ -166,11 +166,22 @@ def _make_vllm_client(config: VlmConfig) -> VlmClient:
 def _make_transformers_client(config: VlmConfig) -> VlmClient:
     try:
         import torch  # type: ignore[import-not-found]
-        from transformers import AutoModelForVision2Seq, AutoProcessor  # type: ignore[import-not-found]
+        import transformers  # type: ignore[import-not-found]
+        from transformers import AutoProcessor  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ImportError("transformers + torch are required for backend='transformers'.") from exc
+    auto_cls = (
+        getattr(transformers, "AutoModelForImageTextToText", None)
+        or getattr(transformers, "AutoModelForVision2Seq", None)
+    )
+    if auto_cls is None:
+        raise ImportError(
+            "Neither AutoModelForImageTextToText nor AutoModelForVision2Seq is available in this "
+            "transformers version. Install transformers>=4.45 (which has AutoModelForImageTextToText) "
+            "for VL models."
+        )
     processor = AutoProcessor.from_pretrained(config.model_id)
-    model = AutoModelForVision2Seq.from_pretrained(config.model_id, torch_dtype="auto")
+    model = auto_cls.from_pretrained(config.model_id, torch_dtype="auto")
     model.eval()
 
     def _gen(batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float) -> list[str]:
