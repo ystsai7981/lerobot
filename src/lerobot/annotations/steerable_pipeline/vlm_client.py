@@ -181,13 +181,16 @@ def _make_transformers_client(config: VlmConfig) -> VlmClient:
             "for VL models."
         )
     processor = AutoProcessor.from_pretrained(config.model_id)
-    # device_map='auto' loads weights directly to GPU(s) and shards when
-    # needed; without it, transformers stages the full checkpoint in CPU
-    # memory first which OOMs the host on FP8/large models.
+    # ``low_cpu_mem_usage=True`` avoids a transformers-internal staging
+    # buffer that has caused std::bad_alloc on Qwen3-line architectures
+    # even on hosts with TBs of RAM (the failing alloc is in the
+    # post-load tensor-placement path, not a real OOM).
+    # ``device_map='auto'`` then streams shards directly to the GPU.
     model = auto_cls.from_pretrained(
         config.model_id,
         torch_dtype="auto",
         device_map="auto",
+        low_cpu_mem_usage=True,
     )
     model.eval()
 
