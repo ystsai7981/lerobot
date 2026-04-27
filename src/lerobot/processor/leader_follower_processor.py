@@ -36,8 +36,17 @@ converts that into a normalised EE-delta dictionary by:
 The output is written back to ``complementary_data["teleop_action"]`` so the
 rest of the action pipeline (``InterventionActionProcessorStep`` ->
 ``MapTensorToDeltaActionDictStep`` -> IK) is unchanged.
+
+Additionally, when an optional ``teleop_device`` reference is provided, this
+step also pushes the follower's raw joint positions back to the leader via
+``teleop_device.send_action(follower_joints)`` every tick. Combined with
+:class:`SOLeaderFollower.send_action`, this implements the **haptic follow**
+behaviour from https://github.com/huggingface/lerobot/pull/2596: the leader
+mimics the follower while the human is hands-off, then drops torque the
+moment intervention is toggled so the user can grab and steer it.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -48,6 +57,8 @@ from lerobot.model import RobotKinematics
 from lerobot.types import EnvTransition, TransitionKey
 
 from .pipeline import ProcessorStep, ProcessorStepRegistry
+
+logger = logging.getLogger(__name__)
 
 TELEOP_ACTION_KEY = "teleop_action"
 RAW_JOINT_POSITIONS_KEY = "raw_joint_positions"
@@ -101,6 +112,11 @@ class LeaderArmInterventionStep(ProcessorStep):
             considered ``open`` -> command ``2``.
         leader_gripper_close: Threshold (<= ) below which the leader gripper is
             considered ``closed`` -> command ``0``.
+        teleop_device: Optional reference to the leader teleoperator. When set
+            and the device implements ``send_action(action_dict)``, this step
+            pushes the follower's raw joints to it every tick to drive haptic
+            follow. The teleop is responsible for gating actual motor writes on
+            its own intervention state (see :class:`SOLeaderFollower`).
     """
 
     kinematics: RobotKinematics
@@ -109,12 +125,20 @@ class LeaderArmInterventionStep(ProcessorStep):
     use_gripper: bool = True
     leader_gripper_open: float = LEADER_GRIPPER_OPEN_DEFAULT
     leader_gripper_close: float = LEADER_GRIPPER_CLOSE_DEFAULT
+    teleop_device: Any = None
 
     _initial_follower_joints: np.ndarray | None = field(default=None, init=False, repr=False)
 
     def __call__(self, transition: EnvTransition) -> EnvTransition:
         new_transition = transition.copy()
         complementary_data = dict(new_transition.get(TransitionKey.COMPLEMENTARY_DATA, {}) or {})
+
+        # Haptic follow: push follower joints to the leader every step (whether
+        # or not we have a usable leader action this tick). The leader's own
+        # send_action gates writes on its intervention state.
+        follower_joints_dict = self._read_follower_joints_dict(transition, complementary_data)
+        if follower_joints_dict is not None:
+            self._push_haptic_follow(follower_joints_dict)
 
         leader_joints_dict = complementary_data.get(TELEOP_ACTION_KEY)
         if not isinstance(leader_joints_dict, dict):
@@ -125,7 +149,11 @@ class LeaderArmInterventionStep(ProcessorStep):
             # Already in EE-delta form (or unrecognised); skip.
             return new_transition
 
-        follower_joints = self._read_follower_joints(transition, complementary_data)
+        follower_joints = (
+            _joint_dict_to_array(follower_joints_dict, self.motor_names)
+            if follower_joints_dict is not None
+            else None
+        )
         leader_joints = _joint_dict_to_array(leader_joints_dict, self.motor_names)
 
         if follower_joints is None or leader_joints is None:
@@ -163,9 +191,9 @@ class LeaderArmInterventionStep(ProcessorStep):
         new_transition[TransitionKey.COMPLEMENTARY_DATA] = complementary_data
         return new_transition
 
-    def _read_follower_joints(
+    def _read_follower_joints_dict(
         self, transition: EnvTransition, complementary_data: dict[str, Any]
-    ) -> np.ndarray | None:
+    ) -> dict[str, float] | None:
         """Best-effort read of the follower joints from the transition.
 
         Tries (in order):
@@ -173,20 +201,39 @@ class LeaderArmInterventionStep(ProcessorStep):
         2. ``transition[OBSERVATION]`` if it is a flat ``"<motor>.pos"`` dict
            (this is the convention used by ``step_env_and_process_transition``
            when staging an action transition).
+
+        Returns the source dict if all expected motors are present, else
+        ``None``. We return the *dict* (not the array) because we want to feed
+        it back to ``teleop_device.send_action`` for haptic follow.
         """
         raw = complementary_data.get(RAW_JOINT_POSITIONS_KEY)
-        if isinstance(raw, dict):
-            arr = _joint_dict_to_array(raw, self.motor_names)
-            if arr is not None:
-                return arr
+        if isinstance(raw, dict) and all(f"{m}.pos" in raw for m in self.motor_names):
+            return raw  # type: ignore[return-value]
 
         observation = transition.get(TransitionKey.OBSERVATION)
-        if isinstance(observation, dict):
-            arr = _joint_dict_to_array(observation, self.motor_names)
-            if arr is not None:
-                return arr
+        if isinstance(observation, dict) and all(f"{m}.pos" in observation for m in self.motor_names):
+            return observation  # type: ignore[return-value]
 
         return None
+
+    def _push_haptic_follow(self, follower_joints_dict: dict[str, float]) -> None:
+        """Send the follower's joints back to the leader for haptic follow.
+
+        Errors are logged once and swallowed -- a failed haptic update must
+        never break the policy / learner loop.
+        """
+        if self.teleop_device is None:
+            return
+        send_action = getattr(self.teleop_device, "send_action", None)
+        if send_action is None:
+            return
+        try:
+            send_action(follower_joints_dict)
+        except NotImplementedError:
+            # Plain SOLeader / unsupported teleop -- silently disable haptic follow.
+            self.teleop_device = None
+        except Exception as e:  # pragma: no cover - hardware path
+            logger.warning(f"[LeaderArmInterventionStep] haptic follow failed: {e}")
 
     def _discretise_gripper(self, leader_gripper_pos: float) -> float:
         """Map a leader gripper position in ``[0, 100]`` to ``{0, 1, 2}``."""
@@ -203,6 +250,9 @@ class LeaderArmInterventionStep(ProcessorStep):
         return out
 
     def get_config(self) -> dict[str, Any]:
+        # `kinematics` and `teleop_device` are runtime objects (not JSON-serializable)
+        # and are re-injected by `gym_manipulator.make_processors`, so they are
+        # intentionally omitted from the saved config.
         return {
             "motor_names": list(self.motor_names),
             "end_effector_step_sizes": dict(self.end_effector_step_sizes),

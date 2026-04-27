@@ -492,7 +492,9 @@ def make_processors(
     )
 
     # Leader-arm intervention: convert raw leader joints in `teleop_action`
-    # into a 4-D EE-delta dict before the override step consumes it.
+    # into a 4-D EE-delta dict before the override step consumes it. The same
+    # step also drives haptic follow on the leader (when `teleop_device` is a
+    # `SOLeaderFollower`) by pushing the follower joints back via send_action.
     if (
         getattr(cfg.processor, "control_mode", "gamepad") == "leader"
         and cfg.processor.inverse_kinematics is not None
@@ -503,6 +505,7 @@ def make_processors(
                 kinematics=kinematics_solver,
                 motor_names=motor_names,
                 end_effector_step_sizes=cfg.processor.inverse_kinematics.end_effector_step_sizes,
+                teleop_device=teleop_device,
                 use_gripper=use_gripper_for_intervention,
             )
         )

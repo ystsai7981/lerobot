@@ -15,11 +15,10 @@
 # limitations under the License.
 
 """
-SO Leader teleoperator extended with HIL-SERL intervention events.
+SO Leader teleoperator extended with HIL-SERL intervention events and haptic follow.
 
-This thin wrapper around :class:`SOLeader` keeps the underlying joint-reading
-behaviour intact (so :func:`get_action` returns ``{"<motor>.pos": float}``)
-while adding:
+This wrapper around :class:`SOLeader` keeps the underlying joint-reading behaviour
+intact (so :func:`get_action` returns ``{"<motor>.pos": float}``) while adding:
 
 * A pynput keyboard listener that toggles intervention with SPACE and emits
   ``success`` / ``rerecord`` / ``fail`` signals via S / R / Q keys, mirroring
@@ -30,10 +29,17 @@ while adding:
   ``[delta_x, delta_y, delta_z, gripper]`` space the leader will project into
   via :class:`LeaderArmInterventionStep` -- this is what ends up recorded by
   ``LeRobotDataset`` in HIL-SERL ``record`` mode.
+* :func:`send_action` for **haptic follow**: when the human is not intervening,
+  the leader is torque-enabled and tracks the follower's joint positions so the
+  user can grab it at any time and seamlessly take over (mirrors the design from
+  https://github.com/huggingface/lerobot/pull/2596). When intervention is
+  toggled on, leader torque is disabled so the user can move it freely.
+* Lower position-loop gains on :func:`connect` (``P=16, I=0, D=16``) so the
+  haptic follow does not jerk the user's hand when grabbing the leader.
 
-The actual joint-to-EE-delta conversion does **not** happen here; it is
-performed by :class:`LeaderArmInterventionStep` in the action processor
-pipeline so the leader stays a pure I/O device.
+The joint-to-EE-delta conversion does **not** happen here; it is performed by
+:class:`LeaderArmInterventionStep` in the action processor pipeline so the
+leader stays a pure I/O device.
 """
 
 from __future__ import annotations
@@ -44,6 +50,8 @@ import os
 import sys
 from typing import Any
 
+import numpy as np
+
 from lerobot.types import RobotAction
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 from lerobot.utils.import_utils import _pynput_available
@@ -51,6 +59,10 @@ from lerobot.utils.import_utils import _pynput_available
 from ..utils import TeleopEvents
 from .config_so_leader import SOLeaderTeleopConfig
 from .so_leader import SOLeader
+
+LEADER_FOLLOWER_P_GAIN = 16
+LEADER_FOLLOWER_I_GAIN = 0
+LEADER_FOLLOWER_D_GAIN = 16
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +95,11 @@ class SOLeaderFollower(SOLeader):
         self._terminate_episode: bool = False
         self._listener: Any = None
 
+        # Haptic follow state (mirrors `is_intervening` / `leader_torque_enabled`
+        # in https://github.com/huggingface/lerobot/pull/2596 SO101LeaderFollower).
+        self._leader_torque_enabled: bool = True
+        self._last_follower_pos: np.ndarray | None = None
+
     @property
     def action_features(self) -> dict[str, Any]:
         """Announce the 4-D EE-delta action space recorded by the dataset.
@@ -101,7 +118,27 @@ class SOLeaderFollower(SOLeader):
     @check_if_already_connected
     def connect(self, calibrate: bool = True) -> None:
         super().connect(calibrate=calibrate)
+        self._configure_leader_follower_gains()
         self._start_keyboard_listener()
+        logger.info(
+            "[SOLeaderFollower] connected. Press SPACE to toggle intervention, "
+            "'s' for success, 'r' for re-record, 'q' to terminate."
+        )
+
+    def _configure_leader_follower_gains(self) -> None:
+        """Lower position-loop gains so haptic follow does not yank the user.
+
+        Mirrors the gains used by the SO101LeaderFollower in PR #2596 — high
+        default gains make the leader fight the user's hand when they grab it
+        between interventions.
+        """
+        for motor in self.bus.motors:
+            try:
+                self.bus.write("P_Coefficient", motor, LEADER_FOLLOWER_P_GAIN)
+                self.bus.write("I_Coefficient", motor, LEADER_FOLLOWER_I_GAIN)
+                self.bus.write("D_Coefficient", motor, LEADER_FOLLOWER_D_GAIN)
+            except Exception as e:  # pragma: no cover - hardware path
+                logger.warning(f"[SOLeaderFollower] could not set PID gains for '{motor}': {e}")
 
     def _start_keyboard_listener(self) -> None:
         if not PYNPUT_AVAILABLE:
@@ -135,8 +172,63 @@ class SOLeaderFollower(SOLeader):
 
     @check_if_not_connected
     def get_action(self) -> RobotAction:
-        # Reuse the SOLeader joint read so we still expose the leader pose.
+        # When the user has just toggled into intervention, make sure leader
+        # torque is OFF so they can move it without fighting the position loop.
+        if self._is_intervention and self._leader_torque_enabled:
+            try:
+                self.bus.sync_write("Torque_Enable", 0)
+                self._leader_torque_enabled = False
+            except Exception as e:  # pragma: no cover - hardware path
+                logger.warning(f"[SOLeaderFollower] could not disable leader torque: {e}")
         return super().get_action()
+
+    def send_action(self, action: dict[str, float]) -> None:  # type: ignore[override]
+        """Mirror the follower's joint positions on the leader (haptic follow).
+
+        This is called every step from the action pipeline (typically by
+        :class:`LeaderArmInterventionStep`) with the follower's raw joint
+        positions ``{"<motor>.pos": float}``. While the user is **not**
+        intervening the leader is torque-enabled and tracks the follower so the
+        operator can grab it at any time and continue motion smoothly. As soon
+        as the user toggles intervention on (SPACE), torque is dropped in
+        :func:`get_action` so the human can move the leader freely.
+
+        Errors talking to the bus are logged and swallowed -- the policy /
+        learner loop must keep ticking even if a single haptic update fails.
+
+        Args:
+            action: Dictionary of follower motor positions, ``{motor.pos: deg}``.
+        """
+        if not self.is_connected:
+            return
+
+        try:
+            self._last_follower_pos = np.array(
+                [float(action.get(f"{m}.pos", 0.0)) for m in self.bus.motors],
+                dtype=float,
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"[SOLeaderFollower] could not extract follower joints: {e}")
+            return
+
+        if self._is_intervention:
+            return
+
+        if not self._leader_torque_enabled:
+            try:
+                self.bus.sync_write("Torque_Enable", 1)
+                self._leader_torque_enabled = True
+            except Exception as e:  # pragma: no cover - hardware path
+                logger.warning(f"[SOLeaderFollower] could not enable leader torque: {e}")
+                return
+
+        goal_pos = {m: float(action[f"{m}.pos"]) for m in self.bus.motors if f"{m}.pos" in action}
+        if not goal_pos:
+            return
+        try:
+            self.bus.sync_write("Goal_Position", goal_pos)
+        except Exception as e:  # pragma: no cover - hardware path
+            logger.warning(f"[SOLeaderFollower] could not push goal position to leader: {e}")
 
     def get_teleop_events(self) -> dict[TeleopEvents, bool]:
         events = {
@@ -157,6 +249,8 @@ class SOLeaderFollower(SOLeader):
         self._success = False
         self._rerecord = False
         self._terminate_episode = False
+        self._leader_torque_enabled = True
+        self._last_follower_pos = None
 
     @check_if_not_connected
     def disconnect(self) -> None:
