@@ -22,8 +22,6 @@ from unittest.mock import patch
 
 import pytest
 
-pytest.importorskip("grpc")
-
 from lerobot.rl.process import ProcessSignalHandler
 
 

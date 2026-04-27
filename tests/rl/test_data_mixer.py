@@ -13,10 +13,6 @@
 # limitations under the License.
 """Tests for RL data mixing (DataMixer, OnlineOfflineMixer)."""
 
-import pytest
-
-pytest.importorskip("grpc")
-
 import torch
 
 from lerobot.rl.buffer import ReplayBuffer

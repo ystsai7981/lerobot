@@ -16,9 +16,6 @@
 """Tests for the RL algorithm abstraction and SACAlgorithm implementation."""
 
 import pytest
-
-pytest.importorskip("grpc")
-
 import torch
 
 from lerobot.configs.types import FeatureType, PolicyFeature
@@ -31,7 +28,7 @@ from lerobot.utils.constants import ACTION, OBS_IMAGE, OBS_STATE
 from lerobot.utils.random_utils import set_seed
 
 # ---------------------------------------------------------------------------
-# Helpers (reuse patterns from tests/policies/test_sac_policy.py)
+# Helpers (reuse patterns from tests/policies/test_gaussian_actor_policy.py)
 # ---------------------------------------------------------------------------
 
 

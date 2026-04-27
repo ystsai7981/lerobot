@@ -18,10 +18,6 @@ import threading
 import time
 from queue import Queue
 
-import pytest
-
-pytest.importorskip("grpc")
-
 from torch.multiprocessing import Queue as TorchMPQueue
 
 from lerobot.rl.queue import get_last_item_from_queue
