@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 
 @dataclass
@@ -61,7 +60,8 @@ class Module3Config:
 class VlmConfig:
     """Shared Qwen-VL client configuration."""
 
-    backend: Literal["vllm", "transformers", "stub"] = "vllm"
+    backend: str = "vllm"
+    """One of ``vllm``, ``transformers``, or ``stub`` (tests only)."""
     model_id: str = "Qwen/Qwen3.6-27B-FP8"
     max_new_tokens: int = 512
     temperature: float = 0.2
