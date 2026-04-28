@@ -276,7 +276,7 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         ) from exc
 
     api_base = config.api_base
-    if config.auto_serve:
+    if config.auto_serve and not _server_is_up(api_base):
         api_base = _spawn_inference_server(config)
 
     client = OpenAI(base_url=api_base, api_key=config.api_key)
@@ -297,6 +297,18 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         return outs
 
     return _GenericTextClient(_gen, config)
+
+
+def _server_is_up(api_base: str) -> bool:
+    """Return True if ``api_base/models`` answers 200 within 2 seconds."""
+    import urllib.request  # noqa: PLC0415
+
+    url = api_base.rstrip("/") + "/models"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            return resp.status == 200
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _spawn_inference_server(config: VlmConfig) -> str:

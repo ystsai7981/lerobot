@@ -83,11 +83,14 @@ class VlmConfig:
     """Base URL for the ``openai`` backend."""
     api_key: str = "EMPTY"
     """API key for the ``openai`` backend; ``EMPTY`` works for local servers."""
-    auto_serve: bool = False
-    """When True with ``backend=openai``, the CLI spawns the inference
-    server itself (default: ``transformers serve``), waits for it to be
-    ready, runs the pipeline, and tears it down on exit. Override the
-    command via ``serve_command``."""
+    auto_serve: bool = True
+    """When True with ``backend=openai``, the CLI probes ``api_base``
+    first; if no server answers, it spawns one (default:
+    ``transformers serve``), waits for it to be ready, runs the
+    pipeline, and tears it down on exit. Default ``True`` so a single
+    ``lerobot-annotate`` call can drive the whole flow. Set to ``False``
+    if you want to fail fast when no server is reachable (e.g. you're
+    pointing at a remote endpoint that should already be up)."""
     serve_port: int = 8000
     """Port the auto-spawned server binds to. Sets ``api_base`` automatically."""
     serve_command: str | None = None
