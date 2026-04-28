@@ -32,7 +32,14 @@ class Module1Config:
     """
 
     enabled: bool = True
-    max_video_frames: int = 32
+    frames_per_second: float = 1.0
+    """Sample one image-frame per ``1/fps`` seconds across the episode for
+    Module 1's subtask-decomposition prompt. ``1.0`` = 1 fps. Capped by
+    ``max_video_frames`` to avoid blowing up the request payload."""
+    max_video_frames: int = 128
+    """Hard cap on the number of frames Module 1 sends. With ``fps=1`` and
+    a 30 s episode this yields 30 frames. Bumped from 32 since each frame
+    is small (~30-100 KB PNG when base64'd)."""
     min_subtask_seconds: float = 1.5
     plan_max_steps: int = 8
     use_video_url: bool = False

@@ -175,9 +175,12 @@ class PlanSubtasksMemoryModule:
                 else []
             )
         else:
-            video_frames = self.frame_provider.video_for_episode(
-                record, self.config.max_video_frames
+            target_count = max(
+                1,
+                int(round(episode_duration * self.config.frames_per_second)),
             )
+            target_count = min(target_count, self.config.max_video_frames)
+            video_frames = self.frame_provider.video_for_episode(record, target_count)
             video_block = to_video_block(video_frames)
         content = [*video_block, {"type": "text", "text": prompt}]
         messages = [{"role": "user", "content": content}]
