@@ -202,7 +202,7 @@ def test_module1_attaches_video_block_to_subtask_prompt(fixture_dataset_root: Pa
     provider = _StubFrameProvider()
     module = PlanSubtasksMemoryModule(
         vlm=StubVlmClient(responder=responder),
-        config=Module1Config(max_video_frames=5),
+        config=Module1Config(max_video_frames=5, frames_per_second=10.0),
         frame_provider=provider,
     )
     record = next(iter_episodes(fixture_dataset_root))
@@ -222,7 +222,10 @@ def test_module1_attaches_video_block_to_subtask_prompt(fixture_dataset_root: Pa
     # video block must wrap a list of frames covering the episode
     assert isinstance(video_blocks[0]["video"], list)
     assert len(video_blocks[0]["video"]) <= 5
-    assert provider.video_calls == [(record.episode_index, 5)]
+    # provider is called with target_count = min(duration * fps, max). With
+    # fps=10 on a ~1s episode that requests >max, so max=5 wins.
+    assert provider.video_calls and provider.video_calls[0][0] == record.episode_index
+    assert provider.video_calls[0][1] <= 5
 
 
 def test_module3_attaches_frame_image_block_to_prompt(single_episode_root: Path, tmp_path: Path) -> None:
