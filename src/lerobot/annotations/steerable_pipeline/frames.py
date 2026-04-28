@@ -119,6 +119,8 @@ class VideoFrameProvider:
         return [img for img in out if img is not None]
 
     def _decode(self, episode_index: int, timestamps: list[float]) -> list[Any]:
+        import os as _os  # noqa: PLC0415
+
         from PIL import Image  # noqa: PLC0415
 
         from lerobot.datasets.video_utils import decode_video_frames  # noqa: PLC0415
@@ -127,11 +129,17 @@ class VideoFrameProvider:
         from_timestamp = ep[f"videos/{self.camera_key}/from_timestamp"]
         shifted = [from_timestamp + ts for ts in timestamps]
         video_path = self.root / self._meta.get_video_file_path(episode_index, self.camera_key)
+        # ``torchcodec`` import currently bad-allocs on cu128/torch-2.8 in
+        # some environments; default to ``pyav`` (always available via
+        # the ``av`` package) and let users override with
+        # LEROBOT_VIDEO_BACKEND=torchcodec when their stack supports it.
+        backend = _os.environ.get("LEROBOT_VIDEO_BACKEND", "pyav")
         try:
             frames = decode_video_frames(
                 video_path,
                 shifted,
                 self.tolerance_s,
+                backend=backend,
                 return_uint8=True,
             )
         except Exception:
