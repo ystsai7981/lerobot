@@ -62,7 +62,6 @@ from lerobot.cameras import opencv  # noqa: F401
 from lerobot.configs import parser
 from lerobot.policies import PreTrainedPolicy, make_policy, make_pre_post_processors
 from lerobot.processor import TransitionKey
-from lerobot.rl.process import ProcessSignalHandler
 from lerobot.rl.queue import get_last_item_from_queue
 from lerobot.rl.train_rl import TrainRLServerPipelineConfig
 from lerobot.robots import so_follower  # noqa: F401
@@ -78,6 +77,7 @@ from lerobot.transport.utils import (
     transitions_to_bytes,
 )
 from lerobot.utils.device_utils import get_safe_torch_device
+from lerobot.utils.process import ProcessSignalHandler
 from lerobot.utils.random_utils import set_seed
 from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.transition import (

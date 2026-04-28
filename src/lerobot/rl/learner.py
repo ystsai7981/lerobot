@@ -75,7 +75,6 @@ from lerobot.rl.algorithms.base import RLAlgorithm
 from lerobot.rl.algorithms.factory import make_algorithm
 from lerobot.rl.buffer import ReplayBuffer
 from lerobot.rl.data_sources import OnlineOfflineMixer
-from lerobot.rl.process import ProcessSignalHandler
 from lerobot.rl.train_rl import TrainRLServerPipelineConfig
 from lerobot.rl.trainer import RLTrainer
 from lerobot.robots import so_follower  # noqa: F401
@@ -96,6 +95,7 @@ from lerobot.utils.constants import (
     TRAINING_STATE_DIR,
 )
 from lerobot.utils.device_utils import get_safe_torch_device
+from lerobot.utils.process import ProcessSignalHandler
 from lerobot.utils.random_utils import set_seed
 from lerobot.utils.utils import (
     format_big_number,
