@@ -356,11 +356,20 @@ def _spawn_inference_server(config: VlmConfig) -> str:
         bufsize=1,
     )
 
+    # Watch the server output for the uvicorn readiness banner. This is
+    # more reliable than polling /v1/models because transformers serve
+    # rescans its cache on every model-list request, which can exceed
+    # the urllib timeout and trigger an infinite probe loop.
+    ready_event = threading.Event()
+    ready_markers = ("Uvicorn running", "Application startup complete")
+
     def _stream_output() -> None:
         assert proc.stdout is not None
         for line in proc.stdout:
             sys.stdout.write(f"[server] {line}")
             sys.stdout.flush()
+            if any(marker in line for marker in ready_markers):
+                ready_event.set()
 
     threading.Thread(target=_stream_output, daemon=True).start()
 
@@ -377,20 +386,14 @@ def _spawn_inference_server(config: VlmConfig) -> str:
     atexit.register(_shutdown)
 
     deadline = time.monotonic() + config.serve_ready_timeout_s
-    health_url = api_base.rstrip("/") + "/models"
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             raise RuntimeError(
                 f"[server] inference server exited unexpectedly with rc={proc.returncode}. "
                 f"See [server] log lines above for the cause."
             )
-        try:
-            with urllib.request.urlopen(health_url, timeout=2) as resp:
-                if resp.status == 200:
-                    return api_base
-        except Exception:  # noqa: BLE001  - intentional broad except
-            pass
-        time.sleep(2)
+        if ready_event.wait(timeout=2):
+            return api_base
     proc.terminate()
     raise RuntimeError(
         f"[server] did not become ready within {config.serve_ready_timeout_s}s"
