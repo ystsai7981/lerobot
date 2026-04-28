@@ -201,20 +201,32 @@ def _make_transformers_client(config: VlmConfig) -> VlmClient:
     processor = AutoProcessor.from_pretrained(
         config.model_id, trust_remote_code=config.trust_remote_code
     )
-    # ``low_cpu_mem_usage=True`` avoids a transformers-internal staging
-    # buffer that has caused std::bad_alloc on Qwen3-line architectures
-    # even on hosts with TBs of RAM (the failing alloc is in the
-    # post-load tensor-placement path, not a real OOM).
-    # ``device_map='auto'`` then streams shards directly to the GPU.
-    # ``trust_remote_code`` is required for many newer VL releases
-    # (Qwen3.6-FP8, etc.) that ship a custom loader in the repo.
-    model = auto_cls.from_pretrained(
-        config.model_id,
-        torch_dtype="auto",
-        device_map="auto",
-        low_cpu_mem_usage=True,
-        trust_remote_code=config.trust_remote_code,
-    )
+    import os as _os  # noqa: PLC0415
+
+    use_accelerate = _os.environ.get("LEROBOT_TRANSFORMERS_DEVICE_MAP", "manual") != "manual"
+    # ``device_map='auto'`` triggers a known std::bad_alloc on the Qwen3-VL
+    # post-load dispatch path (the alloc fails in accelerate's hook setup
+    # even with TBs of host RAM). Default to manual: load on CPU with
+    # ``low_cpu_mem_usage=True``, then ``.to("cuda")``. Set
+    # ``LEROBOT_TRANSFORMERS_DEVICE_MAP=auto`` to opt back into the old path.
+    if use_accelerate:
+        model = auto_cls.from_pretrained(
+            config.model_id,
+            torch_dtype="auto",
+            device_map="auto",
+            low_cpu_mem_usage=True,
+            trust_remote_code=config.trust_remote_code,
+        )
+    else:
+        import torch as _torch  # noqa: PLC0415
+
+        model = auto_cls.from_pretrained(
+            config.model_id,
+            torch_dtype=_torch.bfloat16,
+            low_cpu_mem_usage=True,
+            trust_remote_code=config.trust_remote_code,
+        )
+        model = model.to("cuda")
     model.eval()
 
     def _gen(batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float) -> list[str]:
