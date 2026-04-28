@@ -23,7 +23,7 @@ from threading import Event, Thread
 
 import numpy as np
 
-from lerobot.teleoperators.so101_leader.so101_leader import SO101Leader
+from lerobot.teleoperators.so_leader.so_leader import SOLeader as SO101Leader
 from lerobot.teleoperators.utils import TeleopEvents
 
 PYNPUT_AVAILABLE = True

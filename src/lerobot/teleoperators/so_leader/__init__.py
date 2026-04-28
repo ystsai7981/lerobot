@@ -28,6 +28,7 @@ __all__ = [
     "SO100LeaderConfig",
     "SO101Leader",
     "SO101LeaderConfig",
+    "SO101LeaderFollower",
     "SOLeader",
     "SOLeaderConfig",
     "SOLeaderTeleopConfig",
