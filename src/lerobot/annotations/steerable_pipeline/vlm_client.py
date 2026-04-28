@@ -276,8 +276,18 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         ) from exc
 
     api_base = config.api_base
-    if config.auto_serve and not _server_is_up(api_base):
-        api_base = _spawn_inference_server(config)
+    print(
+        f"[lerobot-annotate] backend=openai model={config.model_id} "
+        f"api_base={api_base} auto_serve={config.auto_serve}",
+        flush=True,
+    )
+    if config.auto_serve:
+        if _server_is_up(api_base):
+            print(f"[lerobot-annotate] reusing server already up at {api_base}", flush=True)
+        else:
+            print("[lerobot-annotate] no server reachable; spawning one", flush=True)
+            api_base = _spawn_inference_server(config)
+            print(f"[lerobot-annotate] server ready at {api_base}", flush=True)
 
     client = OpenAI(base_url=api_base, api_key=config.api_key)
 
@@ -315,17 +325,21 @@ def _spawn_inference_server(config: VlmConfig) -> str:
     """Spawn ``transformers serve`` (or ``serve_command``), wait until it
     accepts ``/v1/models``, and register a shutdown hook.
 
+    Streams the server's stdout/stderr to the parent terminal in
+    real-time on a background thread so users can see model-load
+    progress and errors as they happen.
+
     Returns the full ``api_base`` URL the OpenAI client should use.
     """
     import atexit  # noqa: PLC0415
-    import logging  # noqa: PLC0415
     import shlex  # noqa: PLC0415
     import signal  # noqa: PLC0415
     import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+    import threading  # noqa: PLC0415
     import time  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
-    log = logging.getLogger(__name__)
     cmd = config.serve_command
     if not cmd:
         cmd = (
@@ -333,7 +347,7 @@ def _spawn_inference_server(config: VlmConfig) -> str:
             f"--port {config.serve_port} --continuous-batching"
         )
     api_base = f"http://localhost:{config.serve_port}/v1"
-    log.info("auto_serve: launching: %s", cmd)
+    print(f"[server] launching: {cmd}", flush=True)
     proc = subprocess.Popen(
         shlex.split(cmd),
         stdout=subprocess.PIPE,
@@ -342,9 +356,17 @@ def _spawn_inference_server(config: VlmConfig) -> str:
         bufsize=1,
     )
 
+    def _stream_output() -> None:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sys.stdout.write(f"[server] {line}")
+            sys.stdout.flush()
+
+    threading.Thread(target=_stream_output, daemon=True).start()
+
     def _shutdown() -> None:
         if proc.poll() is None:
-            log.info("auto_serve: stopping pid=%s", proc.pid)
+            print(f"[server] stopping pid={proc.pid}", flush=True)
             proc.send_signal(signal.SIGINT)
             try:
                 proc.wait(timeout=15)
@@ -358,22 +380,20 @@ def _spawn_inference_server(config: VlmConfig) -> str:
     health_url = api_base.rstrip("/") + "/models"
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            tail = proc.stdout.read() if proc.stdout else ""
             raise RuntimeError(
-                f"auto_serve: inference server exited (rc={proc.returncode}). "
-                f"Tail of output:\n{tail}"
+                f"[server] inference server exited unexpectedly with rc={proc.returncode}. "
+                f"See [server] log lines above for the cause."
             )
         try:
             with urllib.request.urlopen(health_url, timeout=2) as resp:
                 if resp.status == 200:
-                    log.info("auto_serve: server ready at %s", api_base)
                     return api_base
         except Exception:  # noqa: BLE001  - intentional broad except
             pass
         time.sleep(2)
     proc.terminate()
     raise RuntimeError(
-        f"auto_serve: server did not become ready within {config.serve_ready_timeout_s}s"
+        f"[server] did not become ready within {config.serve_ready_timeout_s}s"
     )
 
 
