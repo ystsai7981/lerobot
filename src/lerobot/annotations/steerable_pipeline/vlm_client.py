@@ -277,20 +277,39 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         ) from exc
 
     api_base = config.api_base
-    print(
-        f"[lerobot-annotate] backend=openai model={config.model_id} "
-        f"api_base={api_base} auto_serve={config.auto_serve}",
-        flush=True,
-    )
-    if config.auto_serve:
-        if _server_is_up(api_base):
-            print(f"[lerobot-annotate] reusing server already up at {api_base}", flush=True)
-        else:
-            print("[lerobot-annotate] no server reachable; spawning one", flush=True)
-            api_base = _spawn_inference_server(config)
-            print(f"[lerobot-annotate] server ready at {api_base}", flush=True)
+    api_key = config.api_key
+    auto_serve = config.auto_serve
 
-    client = OpenAI(base_url=api_base, api_key=config.api_key)
+    if config.use_hf_inference_providers:
+        api_base = "https://router.huggingface.co/v1"
+        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY") or ""
+        if not token:
+            raise RuntimeError(
+                "use_hf_inference_providers=True requires HF_TOKEN (or "
+                "HUGGINGFACE_API_KEY) in the environment."
+            )
+        api_key = token
+        auto_serve = False
+        print(
+            f"[lerobot-annotate] HF Inference Providers: routing model={config.model_id} "
+            f"via {api_base}",
+            flush=True,
+        )
+    else:
+        print(
+            f"[lerobot-annotate] backend=openai model={config.model_id} "
+            f"api_base={api_base} auto_serve={auto_serve}",
+            flush=True,
+        )
+        if auto_serve:
+            if _server_is_up(api_base):
+                print(f"[lerobot-annotate] reusing server already up at {api_base}", flush=True)
+            else:
+                print("[lerobot-annotate] no server reachable; spawning one", flush=True)
+                api_base = _spawn_inference_server(config)
+                print(f"[lerobot-annotate] server ready at {api_base}", flush=True)
+
+    client = OpenAI(base_url=api_base, api_key=api_key)
 
     # ``mm_processor_kwargs`` is a vllm-specific extra; transformers serve
     # rejects it with HTTP 422. Send it only when explicitly opted in via

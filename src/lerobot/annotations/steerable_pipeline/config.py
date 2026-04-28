@@ -83,6 +83,12 @@ class VlmConfig:
     """Base URL for the ``openai`` backend."""
     api_key: str = "EMPTY"
     """API key for the ``openai`` backend; ``EMPTY`` works for local servers."""
+    use_hf_inference_providers: bool = False
+    """When True, route requests through https://router.huggingface.co/v1
+    using your ``HF_TOKEN`` env var as the API key. The CLI flips
+    ``auto_serve`` off automatically — no local server is spawned. Use
+    ``model_id`` of the form ``Qwen/Qwen3-VL-30B-A3B-Instruct:novita`` to
+    pin a specific provider, or omit ``:provider`` to let HF route."""
     auto_serve: bool = True
     """When True with ``backend=openai``, the CLI probes ``api_base``
     first; if no server answers, it spawns one (default:
