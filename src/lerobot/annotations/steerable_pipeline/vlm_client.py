@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -390,27 +391,42 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         "LEROBOT_OPENAI_SEND_MM_KWARGS", ""
     ).lower() in {"1", "true", "yes"}
 
+    rr_lock = threading.Lock()
+
+    def _one_call(
+        messages: Sequence[dict[str, Any]], max_tok: int, temp: float
+    ) -> str:
+        api_messages, mm_kwargs = _to_openai_messages(messages)
+        kwargs: dict[str, Any] = {
+            "model": config.model_id,
+            "messages": api_messages,
+            "max_tokens": max_tok,
+            "temperature": temp,
+        }
+        if send_mm_kwargs and mm_kwargs:
+            kwargs["extra_body"] = {
+                "mm_processor_kwargs": {**mm_kwargs, "do_sample_frames": True}
+            }
+        with rr_lock:
+            chosen = clients[rr_counter["i"] % len(clients)]
+            rr_counter["i"] += 1
+        response = chosen.chat.completions.create(**kwargs)
+        return response.choices[0].message.content or ""
+
     def _gen(
         batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float
     ) -> list[str]:
-        outs: list[str] = []
-        for messages in batch:
-            api_messages, mm_kwargs = _to_openai_messages(messages)
-            kwargs: dict[str, Any] = {
-                "model": config.model_id,
-                "messages": api_messages,
-                "max_tokens": max_tok,
-                "temperature": temp,
-            }
-            if send_mm_kwargs and mm_kwargs:
-                kwargs["extra_body"] = {
-                    "mm_processor_kwargs": {**mm_kwargs, "do_sample_frames": True}
-                }
-            chosen = clients[rr_counter["i"] % len(clients)]
-            rr_counter["i"] += 1
-            response = chosen.chat.completions.create(**kwargs)
-            outs.append(response.choices[0].message.content or "")
-        return outs
+        if len(batch) <= 1 or config.client_concurrency <= 1:
+            return [_one_call(messages, max_tok, temp) for messages in batch]
+        # Parallel fan-out — vllm batches these on the server side.
+        from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+        max_workers = min(config.client_concurrency, len(batch))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [
+                pool.submit(_one_call, messages, max_tok, temp) for messages in batch
+            ]
+            return [f.result() for f in futures]
 
     return _GenericTextClient(_gen, config)
 

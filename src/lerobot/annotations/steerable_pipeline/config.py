@@ -121,6 +121,11 @@ class VlmConfig:
     ``serve_port + i``) and round-robin client requests across them.
     Useful when DP/TP NCCL setup is broken on the node — single-GPU
     replicas don't need cross-GPU communication."""
+    client_concurrency: int = 16
+    """Maximum number of in-flight chat requests the client issues in
+    parallel. vllm batches them internally for free, so bumping this
+    typically gives big throughput wins on a single TP=1 server. Set to
+    ``1`` for strict serial calls."""
     serve_ready_timeout_s: float = 600.0
     """Max seconds to wait for the server to start serving requests."""
     max_new_tokens: int = 512

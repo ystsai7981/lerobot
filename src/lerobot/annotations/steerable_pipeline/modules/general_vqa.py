@@ -98,11 +98,24 @@ class GeneralVqaModule:
         anchor_idx = _emission_anchor_indices(
             record.frame_timestamps, self.config.vqa_emission_hz, self.config.K
         )
-        rows: list[dict[str, Any]] = []
+        # Build all messages first, then issue them as a single batched
+        # generate_json call so the client can fan them out concurrently.
+        per_call: list[tuple[float, str, list[dict[str, Any]]]] = []
         for idx in anchor_idx:
             ts = float(record.frame_timestamps[idx])
             qtype = rng.choice(self.config.question_types)
-            qa = self._generate_one(record, qtype, ts)
+            messages = self._build_messages(record, qtype, ts)
+            per_call.append((ts, qtype, messages))
+
+        if not per_call:
+            staging.write("module_3", [])
+            return
+
+        results = self.vlm.generate_json([m for _, _, m in per_call])
+
+        rows: list[dict[str, Any]] = []
+        for (ts, _qtype, _messages), result in zip(per_call, results):
+            qa = self._postprocess(result)
             if qa is None:
                 continue
             question, answer = qa
@@ -126,17 +139,18 @@ class GeneralVqaModule:
             )
         staging.write("module_3", rows)
 
-    def _generate_one(
+    def _build_messages(
         self, record: EpisodeRecord, question_type: str, frame_timestamp: float
-    ) -> tuple[str, dict[str, Any]] | None:
+    ) -> list[dict[str, Any]]:
         prompt = load_prompt("module_3_vqa").format(
             episode_task=record.episode_task,
             question_type=question_type,
         )
         images = self.frame_provider.frames_at(record, [frame_timestamp])
         content = [*to_image_blocks(images), {"type": "text", "text": prompt}]
-        messages = [{"role": "user", "content": content}]
-        result = self.vlm.generate_json([messages])[0]
+        return [{"role": "user", "content": content}]
+
+    def _postprocess(self, result: Any) -> tuple[str, dict[str, Any]] | None:
         if not isinstance(result, dict):
             return None
         question = result.get("question")
@@ -150,3 +164,10 @@ class GeneralVqaModule:
         if classify_vqa_answer(answer) is None:
             return None
         return question.strip(), answer
+
+    def _generate_one(
+        self, record: EpisodeRecord, question_type: str, frame_timestamp: float
+    ) -> tuple[str, dict[str, Any]] | None:
+        messages = self._build_messages(record, question_type, frame_timestamp)
+        result = self.vlm.generate_json([messages])[0]
+        return self._postprocess(result)
