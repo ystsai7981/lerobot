@@ -257,8 +257,10 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
     """Backend that talks to any OpenAI-compatible server.
 
     Compatible with ``vllm serve``, ``transformers serve``,
-    ``ktransformers serve``, and hosted endpoints. The server is
-    expected to be already running and to host ``config.model_id``.
+    ``ktransformers serve``, and hosted endpoints. By default the server
+    is expected to be already running. Set ``auto_serve=True`` to have
+    this client spawn one (default: ``transformers serve``), wait until
+    it's ready, and tear it down on process exit.
 
     Image blocks ``{"type":"image", "image":<PIL.Image>}`` are
     auto-converted to ``image_url`` data-URLs. Video blocks
@@ -273,7 +275,11 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
             "Install with `pip install openai`."
         ) from exc
 
-    client = OpenAI(base_url=config.api_base, api_key=config.api_key)
+    api_base = config.api_base
+    if config.auto_serve:
+        api_base = _spawn_inference_server(config)
+
+    client = OpenAI(base_url=api_base, api_key=config.api_key)
 
     def _gen(
         batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float
@@ -291,6 +297,72 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         return outs
 
     return _GenericTextClient(_gen, config)
+
+
+def _spawn_inference_server(config: VlmConfig) -> str:
+    """Spawn ``transformers serve`` (or ``serve_command``), wait until it
+    accepts ``/v1/models``, and register a shutdown hook.
+
+    Returns the full ``api_base`` URL the OpenAI client should use.
+    """
+    import atexit  # noqa: PLC0415
+    import logging  # noqa: PLC0415
+    import shlex  # noqa: PLC0415
+    import signal  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    log = logging.getLogger(__name__)
+    cmd = config.serve_command
+    if not cmd:
+        cmd = (
+            f"transformers serve {shlex.quote(config.model_id)} "
+            f"--port {config.serve_port} --continuous-batching"
+        )
+    api_base = f"http://localhost:{config.serve_port}/v1"
+    log.info("auto_serve: launching: %s", cmd)
+    proc = subprocess.Popen(
+        shlex.split(cmd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    def _shutdown() -> None:
+        if proc.poll() is None:
+            log.info("auto_serve: stopping pid=%s", proc.pid)
+            proc.send_signal(signal.SIGINT)
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    atexit.register(_shutdown)
+
+    deadline = time.monotonic() + config.serve_ready_timeout_s
+    health_url = api_base.rstrip("/") + "/models"
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            tail = proc.stdout.read() if proc.stdout else ""
+            raise RuntimeError(
+                f"auto_serve: inference server exited (rc={proc.returncode}). "
+                f"Tail of output:\n{tail}"
+            )
+        try:
+            with urllib.request.urlopen(health_url, timeout=2) as resp:
+                if resp.status == 200:
+                    log.info("auto_serve: server ready at %s", api_base)
+                    return api_base
+        except Exception:  # noqa: BLE001  - intentional broad except
+            pass
+        time.sleep(2)
+    proc.terminate()
+    raise RuntimeError(
+        f"auto_serve: server did not become ready within {config.serve_ready_timeout_s}s"
+    )
 
 
 def _to_openai_message(message: dict[str, Any]) -> dict[str, Any]:

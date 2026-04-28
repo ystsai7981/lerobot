@@ -83,6 +83,18 @@ class VlmConfig:
     """Base URL for the ``openai`` backend."""
     api_key: str = "EMPTY"
     """API key for the ``openai`` backend; ``EMPTY`` works for local servers."""
+    auto_serve: bool = False
+    """When True with ``backend=openai``, the CLI spawns the inference
+    server itself (default: ``transformers serve``), waits for it to be
+    ready, runs the pipeline, and tears it down on exit. Override the
+    command via ``serve_command``."""
+    serve_port: int = 8000
+    """Port the auto-spawned server binds to. Sets ``api_base`` automatically."""
+    serve_command: str | None = None
+    """Override the auto-serve command (full shell command). When ``None``,
+    we run ``transformers serve <model_id> --port <serve_port> --continuous-batching``."""
+    serve_ready_timeout_s: float = 600.0
+    """Max seconds to wait for the server to start serving requests."""
     max_new_tokens: int = 512
     temperature: float = 0.2
     json_mode: bool = True
