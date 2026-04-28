@@ -299,10 +299,13 @@ class HILSerlProcessorConfig:
     inverse_kinematics: InverseKinematicsConfig | None = None
     reward_classifier: RewardClassifierConfig | None = None
     max_gripper_pos: float | None = 100.0
-    # Only used when ``control_mode == "leader"``. ``False`` (default) emits a
-    # 4-D position+gripper action matching the gamepad path; ``True`` emits the
-    # PR #2596 7-D action with rotation deltas (requires ``wx/wy/wz`` step
-    # sizes in ``inverse_kinematics.end_effector_step_sizes``).
+    # Only used when ``control_mode == "leader"``. ``LeaderFollowerProcessor``
+    # always builds the PR #2596 **7-D** vector ``[dx,dy,dz,wx,wy,wz,gripper]``.
+    # When ``False`` (default), rotation is **disabled** (components 3–5 are
+    # zeroed); when ``True``, full rotation deltas are used (requires
+    # ``wx/wy/wz`` in ``inverse_kinematics.end_effector_step_sizes``). The
+    # intervention step then turns that into a 4-D policy tensor when rotation
+    # is disabled, matching the gamepad pipeline.
     use_rotation: bool = False
 
 

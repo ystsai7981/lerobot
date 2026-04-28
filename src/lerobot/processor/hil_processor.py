@@ -443,6 +443,39 @@ class GripperPenaltyProcessorStep(ProcessorStep):
         return features
 
 
+def _ndarray_intervention_to_action_list(
+    flat: np.ndarray, use_rotation: bool, use_gripper: bool
+) -> list[float]:
+    """Flatten ``LeaderFollowerProcessor`` / policy outputs into a policy action list.
+
+    PR #2596 leader mode always produces 7 elements ``[dx,dy,dz,wx,wy,wz,g]``. When
+    ``use_rotation`` is False, rotation is disabled (zeroed in the 7-D vector) and
+    we still emit a 4-D tensor ``[dx,dy,dz,g]`` for the rest of the pipeline.
+    """
+    n = int(flat.size)
+    if not use_rotation and use_gripper and n == 7:
+        return [float(flat[0]), float(flat[1]), float(flat[2]), float(flat[6])]
+    if not use_rotation and not use_gripper and n == 6:
+        return [float(flat[0]), float(flat[1]), float(flat[2])]
+    return flat.tolist()
+
+
+def _tensor_intervention_to_action_list(
+    flat: torch.Tensor, use_rotation: bool, use_gripper: bool
+) -> list[float]:
+    n = int(flat.numel())
+    if not use_rotation and use_gripper and n == 7:
+        return [
+            float(flat[0].item()),
+            float(flat[1].item()),
+            float(flat[2].item()),
+            float(flat[6].item()),
+        ]
+    if not use_rotation and not use_gripper and n == 6:
+        return [float(flat[0].item()), float(flat[1].item()), float(flat[2].item())]
+    return [float(x.item()) for x in flat]
+
+
 @dataclass
 @ProcessorStepRegistry.register("intervention_action_processor")
 class InterventionActionProcessorStep(ProcessorStep):
@@ -455,6 +488,9 @@ class InterventionActionProcessorStep(ProcessorStep):
 
     Attributes:
         use_gripper: Whether to include the gripper in the teleoperated action.
+        use_rotation: For dict-based teleop actions, whether to include delta_wx/y/z.
+                      For 7-D ndarray/tensors from ``LeaderFollowerProcessor``, when
+                      ``False`` the policy action is sliced to ``[dx,dy,dz,gripper]``.
         terminate_on_success: If True, automatically sets the `done` flag when a
                               `success` event is received.
     """
@@ -509,8 +545,12 @@ class InterventionActionProcessorStep(ProcessorStep):
                     )
                 if self.use_gripper:
                     action_list.append(teleop_action.get(GRIPPER_KEY, self.gripper_neutral_action))
+            elif isinstance(teleop_action, torch.Tensor):
+                flat = teleop_action.detach().flatten()
+                action_list = _tensor_intervention_to_action_list(flat, self.use_rotation, self.use_gripper)
             elif isinstance(teleop_action, np.ndarray):
-                action_list = teleop_action.tolist()
+                flat = np.asarray(teleop_action).reshape(-1)
+                action_list = _ndarray_intervention_to_action_list(flat, self.use_rotation, self.use_gripper)
             else:
                 action_list = teleop_action
 

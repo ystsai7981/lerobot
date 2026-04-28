@@ -492,11 +492,11 @@ def make_processors(
     ]
 
     # Leader-follower control mode: leader haptically tracks follower until the
-    # human toggles intervention with SPACE, at which point leader joints are
-    # converted into EE deltas by ``LeaderFollowerProcessor`` and consumed by
-    # ``InterventionActionProcessorStep``. With ``use_rotation=False`` the
-    # action is the 4-D ``[dx, dy, dz, gripper]`` matching the gamepad path;
-    # with ``True`` it is the PR #2596 7-D ``[dx, dy, dz, dwx, dwy, dwz, gripper]``.
+    # human toggles intervention with SPACE, at which point ``LeaderFollowerProcessor``
+    # builds the PR #2596 **7-D** EE delta tensor. Rotation can be toggled via
+    # ``processor.use_rotation``: when False the ``wx/wy/wz`` channels are zeroed.
+    # ``InterventionActionProcessorStep`` then maps that to either a full 7-D
+    # or 4-D policy action tensor (see helpers in ``hil_processor``).
     leader_use_rotation = bool(getattr(cfg.processor, "use_rotation", False))
     if control_mode == "leader":
         if not isinstance(teleop_device, SO101LeaderFollower):

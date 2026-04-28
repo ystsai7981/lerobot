@@ -48,10 +48,12 @@ class LeaderFollowerProcessor(ProcessorStep):
     kinematics: RobotKinematics
     end_effector_step_sizes: np.ndarray | None = None
     use_gripper: bool = True
-    # When True (PR #2596 default), emit a 7-D action with rotation deltas;
-    # when False, emit a 4-D action ``[dx, dy, dz, gripper]`` matching the
-    # gamepad/keyboard EE convention. ``end_effector_step_sizes`` only needs
-    # ``wx/wy/wz`` keys when this is True.
+    # PR #2596 always produces a **7-D** intervention vector ``[dx, dy, dz, wx,
+    # wy, wz, gripper]`` (normalised to ~[-1, 1] per axis). When ``use_rotation``
+    # is False, the middle three components are **zeroed** (rotation disabled,
+    # not removed): the same tensor layout and code path as PR #2596, but the
+    # downstream policy / IK only sees position + gripper. ``wx/wy/wz`` step
+    # sizes are only read when ``use_rotation`` is True.
     use_rotation: bool = True
     # prev_leader_gripper: float | None = None
     max_gripper_pos: float = 100.0
@@ -106,38 +108,29 @@ class LeaderFollowerProcessor(ProcessorStep):
                 delta_pos = leader_ee_pos - follower_ee_pos
                 delta_gripper = leader_gripper_pos - follower_gripper_pos
 
-                # Normalize the position deltas to [-1, 1]
-                delta_pos = delta_pos / np.array(
+                # Normalise position to ~[-1, 1] per axis (PR #2596).
+                step_xyz = np.array(
                     [
                         self.end_effector_step_sizes["x"],
                         self.end_effector_step_sizes["y"],
                         self.end_effector_step_sizes["z"],
                     ]
                 )
+                delta_pos = delta_pos / step_xyz
                 max_normalized_pos = max(
                     abs(delta_pos[0]),
                     abs(delta_pos[1]),
                     abs(delta_pos[2]),
                 )
 
-                if self.use_rotation:
-                    # For rotation: compute relative rotation from follower to leader
-                    # R_leader = R_follower * R_delta  =>  R_delta = R_follower^T * R_leader
-                    r_delta = follower_ee[:3, :3].T @ leader_ee[:3, :3]
-                    delta_rvec = Rotation.from_matrix(r_delta).as_rotvec()
+                # Relative rotation follower -> leader (same construction as PR #2596).
+                r_delta = follower_ee[:3, :3].T @ leader_ee[:3, :3]
+                delta_rvec = Rotation.from_matrix(r_delta).as_rotvec()
 
+                if self.use_rotation:
                     desired = np.eye(4, dtype=float)
                     desired[:3, :3] = follower_ee[:3, :3] @ r_delta
-                    desired[:3, 3] = follower_ee[:3, 3] + (
-                        delta_pos
-                        * np.array(
-                            [
-                                self.end_effector_step_sizes["x"],
-                                self.end_effector_step_sizes["y"],
-                                self.end_effector_step_sizes["z"],
-                            ]
-                        )
-                    )
+                    desired[:3, 3] = follower_ee[:3, 3] + delta_pos * step_xyz
 
                     pos = desired[:3, 3]
                     tw = Rotation.from_matrix(desired[:3, :3]).as_rotvec()
@@ -160,35 +153,28 @@ class LeaderFollowerProcessor(ProcessorStep):
                     if max_normalized > 1.0:
                         delta_pos = delta_pos / max_normalized
                         delta_rvec = delta_rvec / max_normalized
-
-                    intervention_action = np.array(
-                        [
-                            delta_pos[0],
-                            delta_pos[1],
-                            delta_pos[2],
-                            delta_rvec[0],
-                            delta_rvec[1],
-                            delta_rvec[2],
-                            np.clip(delta_gripper, -self.max_gripper_pos, self.max_gripper_pos)
-                            / self.max_gripper_pos,
-                        ],
-                        dtype=float,
-                    )
                 else:
-                    # Position-only 4-D path: ``[dx, dy, dz, gripper]``
+                    # Rotation **disabled**: keep PR #2596 joint scaling on position only.
                     if max_normalized_pos > 1.0:
                         delta_pos = delta_pos / max_normalized_pos
+                    delta_rvec = np.zeros(3, dtype=float)
 
-                    intervention_action = np.array(
-                        [
-                            delta_pos[0],
-                            delta_pos[1],
-                            delta_pos[2],
-                            np.clip(delta_gripper, -self.max_gripper_pos, self.max_gripper_pos)
-                            / self.max_gripper_pos,
-                        ],
-                        dtype=float,
-                    )
+                grip_norm = (
+                    np.clip(delta_gripper, -self.max_gripper_pos, self.max_gripper_pos) / self.max_gripper_pos
+                )
+
+                intervention_action = np.array(
+                    [
+                        delta_pos[0],
+                        delta_pos[1],
+                        delta_pos[2],
+                        delta_rvec[0],
+                        delta_rvec[1],
+                        delta_rvec[2],
+                        grip_norm,
+                    ],
+                    dtype=float,
+                )
 
                 #         # Extract leader positions from teleop action dict
                 #         # leader_pos = np.array([teleop_action.get(f"{motor}.pos", 0) for motor in self.motor_names])
