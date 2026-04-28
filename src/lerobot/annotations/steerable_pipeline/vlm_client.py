@@ -148,6 +148,16 @@ def _make_vllm_client(config: VlmConfig) -> VlmClient:
         raise ImportError(
             "vllm is required for backend='vllm'. Install with `pip install lerobot[annotations]`."
         ) from exc
+    # Workaround for cuDNN 9.x + torch 2.8 conv3d regression that surfaces
+    # as CUDNN_STATUS_NOT_INITIALIZED in Qwen-VL vision-tower patch
+    # embedders. Setting LEROBOT_DISABLE_CUDNN=1 forces native PyTorch
+    # convolution kernels — slower but functional.
+    import os as _os  # noqa: PLC0415
+
+    if _os.environ.get("LEROBOT_DISABLE_CUDNN", "").lower() in {"1", "true", "yes"}:
+        import torch as _torch  # noqa: PLC0415
+
+        _torch.backends.cudnn.enabled = False
     llm_kwargs: dict[str, Any] = {
         "model": config.model_id,
         "tensor_parallel_size": config.tensor_parallel_size,
