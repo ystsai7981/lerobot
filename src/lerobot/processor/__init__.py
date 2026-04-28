@@ -61,6 +61,7 @@ from .hil_processor import (
     RewardClassifierProcessorStep,
     TimeLimitProcessorStep,
 )
+from .leader_follower_processor import LeaderFollowerProcessor
 from .newline_task_processor import NewLineTaskProcessorStep
 from .normalize_processor import NormalizerProcessorStep, UnnormalizerProcessorStep, hotswap_stats
 from .observation_processor import VanillaObservationProcessorStep
@@ -122,6 +123,7 @@ __all__ = [
     "ImageCropResizeProcessorStep",
     "InfoProcessorStep",
     "InterventionActionProcessorStep",
+    "LeaderFollowerProcessor",
     "make_default_processors",
     "make_default_teleop_action_processor",
     "make_default_robot_action_processor",

@@ -29,6 +29,14 @@ class SOLeaderConfig:
     # Whether to use degrees for angles
     use_degrees: bool = True
 
+    # Enable leader-follower mode where leader can both lead and follow.
+    # When True, ``make_teleoperator_from_config`` returns ``SO101LeaderFollower``
+    # instead of the bare ``SOLeader`` -- see PR #2596.
+    leader_follower_mode: bool = False
+
+    # Whether to include the gripper in the leader-follower action vector.
+    use_gripper: bool = True
+
 
 @TeleoperatorConfig.register_subclass("so101_leader")
 @TeleoperatorConfig.register_subclass("so100_leader")

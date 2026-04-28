@@ -39,6 +39,7 @@ from lerobot.processor import (
     GymHILAdapterProcessorStep,
     ImageCropResizeProcessorStep,
     InterventionActionProcessorStep,
+    LeaderFollowerProcessor,
     MapDeltaActionToRobotActionStep,
     MapTensorToDeltaActionDictStep,
     Numpy2TorchActionProcessorStep,
@@ -71,6 +72,7 @@ from lerobot.teleoperators import (
     make_teleoperator_from_config,
     so_leader,  # noqa: F401
 )
+from lerobot.teleoperators.so_leader import SO101LeaderFollower
 from lerobot.teleoperators.teleoperator import Teleoperator
 from lerobot.teleoperators.utils import TeleopEvents
 from lerobot.utils.constants import ACTION, DONE, OBS_IMAGES, OBS_STATE, REWARD
@@ -481,14 +483,50 @@ def make_processors(
     env_pipeline_steps.append(AddBatchDimensionProcessorStep())
     env_pipeline_steps.append(DeviceProcessorStep(device=device))
 
-    action_pipeline_steps = [
+    # Get control mode (gamepad / keyboard / leader -- see PR #2596)
+    control_mode = cfg.processor.control_mode if cfg.processor is not None else "gamepad"
+
+    action_pipeline_steps: list = [
         AddTeleopActionAsComplimentaryDataStep(teleop_device=teleop_device),
         AddTeleopEventsAsInfoStep(teleop_device=teleop_device),
+    ]
+
+    # Leader-follower control mode: leader haptically tracks follower until the
+    # human toggles intervention with SPACE, at which point leader joints are
+    # converted into 7-D EE deltas (dx, dy, dz, dwx, dwy, dwz, gripper) by
+    # ``LeaderFollowerProcessor`` before being consumed by
+    # ``InterventionActionProcessorStep``.
+    if control_mode == "leader":
+        if not isinstance(teleop_device, SO101LeaderFollower):
+            raise ValueError(
+                "Leader control mode requires SO101LeaderFollower teleop device. "
+                "Set `--teleop.type=so101_leader --teleop.leader_follower_mode=true`."
+            )
+        if cfg.processor.inverse_kinematics is None or kinematics_solver is None:
+            raise ValueError(
+                "Leader control mode requires `cfg.processor.inverse_kinematics` and a kinematics solver."
+            )
+        action_pipeline_steps.append(
+            LeaderFollowerProcessor(
+                leader_device=teleop_device,
+                motor_names=motor_names,
+                robot=env.robot,
+                kinematics=kinematics_solver,
+                end_effector_step_sizes=cfg.processor.inverse_kinematics.end_effector_step_sizes,
+                use_gripper=cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else False,
+                max_gripper_pos=cfg.processor.max_gripper_pos
+                if cfg.processor.max_gripper_pos is not None
+                else 100.0,
+            )
+        )
+
+    action_pipeline_steps.append(
         InterventionActionProcessorStep(
             use_gripper=cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else False,
+            use_rotation=(control_mode == "leader"),
             terminate_on_success=terminate_on_success,
-        ),
-    ]
+        )
+    )
 
     # Replace InverseKinematicsProcessor with new kinematic processors
     if cfg.processor.inverse_kinematics is not None and kinematics_solver is not None:
