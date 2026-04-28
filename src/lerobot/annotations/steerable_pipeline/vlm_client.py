@@ -284,9 +284,16 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
         api_base = "https://router.huggingface.co/v1"
         token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY") or ""
         if not token:
+            try:
+                from huggingface_hub import get_token  # noqa: PLC0415
+
+                token = get_token() or ""
+            except Exception:  # noqa: BLE001
+                token = ""
+        if not token:
             raise RuntimeError(
-                "use_hf_inference_providers=True requires HF_TOKEN (or "
-                "HUGGINGFACE_API_KEY) in the environment."
+                "use_hf_inference_providers=True needs an HF token. Either set "
+                "HF_TOKEN in the environment, or run `huggingface-cli login` once."
             )
         api_key = token
         auto_serve = False
