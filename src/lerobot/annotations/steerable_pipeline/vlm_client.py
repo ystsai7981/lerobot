@@ -138,6 +138,8 @@ def make_vlm_client(config: VlmConfig) -> VlmClient:
         return _make_vllm_client(config)
     if config.backend == "transformers":
         return _make_transformers_client(config)
+    if config.backend == "openai":
+        return _make_openai_client(config)
     raise ValueError(f"Unknown VLM backend: {config.backend!r}")
 
 
@@ -249,6 +251,86 @@ def _make_transformers_client(config: VlmConfig) -> VlmClient:
         return outs
 
     return _GenericTextClient(_gen, config)
+
+
+def _make_openai_client(config: VlmConfig) -> VlmClient:
+    """Backend that talks to any OpenAI-compatible server.
+
+    Compatible with ``vllm serve``, ``transformers serve``,
+    ``ktransformers serve``, and hosted endpoints. The server is
+    expected to be already running and to host ``config.model_id``.
+
+    Image blocks ``{"type":"image", "image":<PIL.Image>}`` are
+    auto-converted to ``image_url`` data-URLs. Video blocks
+    ``{"type":"video", "video":[<PIL>...]}`` are forwarded as
+    multi-frame ``video_url`` items where supported.
+    """
+    try:
+        from openai import OpenAI  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise ImportError(
+            "openai package is required for backend='openai'. "
+            "Install with `pip install openai`."
+        ) from exc
+
+    client = OpenAI(base_url=config.api_base, api_key=config.api_key)
+
+    def _gen(
+        batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float
+    ) -> list[str]:
+        outs: list[str] = []
+        for messages in batch:
+            api_messages = [_to_openai_message(m) for m in messages]
+            response = client.chat.completions.create(
+                model=config.model_id,
+                messages=api_messages,
+                max_tokens=max_tok,
+                temperature=temp,
+            )
+            outs.append(response.choices[0].message.content or "")
+        return outs
+
+    return _GenericTextClient(_gen, config)
+
+
+def _to_openai_message(message: dict[str, Any]) -> dict[str, Any]:
+    """Convert an internal message dict to OpenAI chat format.
+
+    Internal image/video blocks (using PIL.Image objects) become
+    OpenAI ``image_url``/``video_url`` items via base64 data URLs.
+    """
+    content = message.get("content")
+    if not isinstance(content, list):
+        return {"role": message["role"], "content": content}
+    out_blocks: list[dict[str, Any]] = []
+    for block in content:
+        block_type = block.get("type") if isinstance(block, dict) else None
+        if block_type == "text":
+            out_blocks.append({"type": "text", "text": block.get("text", "")})
+        elif block_type == "image":
+            out_blocks.append(
+                {"type": "image_url", "image_url": {"url": _pil_to_data_url(block["image"])}}
+            )
+        elif block_type == "video":
+            frames = block.get("video", [])
+            for img in frames:
+                out_blocks.append(
+                    {"type": "image_url", "image_url": {"url": _pil_to_data_url(img)}}
+                )
+        else:
+            out_blocks.append(block)
+    return {"role": message["role"], "content": out_blocks}
+
+
+def _pil_to_data_url(image: Any) -> str:
+    """Encode a PIL.Image as a base64 data URL."""
+    import base64  # noqa: PLC0415
+    import io  # noqa: PLC0415
+
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
 
 def _messages_to_prompt(messages: Sequence[dict[str, Any]]) -> Any:

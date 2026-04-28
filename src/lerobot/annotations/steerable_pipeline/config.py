@@ -61,8 +61,16 @@ class VlmConfig:
     """Shared Qwen-VL client configuration."""
 
     backend: str = "vllm"
-    """One of ``vllm``, ``transformers``, or ``stub`` (tests only)."""
+    """One of ``vllm``, ``transformers``, ``openai``, or ``stub`` (tests only).
+
+    The ``openai`` backend talks to any OpenAI-compatible server — works
+    with ``vllm serve``, ``transformers serve``, ``ktransformers serve``,
+    or hosted endpoints. Set ``api_base`` and (optionally) ``api_key``."""
     model_id: str = "Qwen/Qwen3.6-27B-FP8"
+    api_base: str = "http://localhost:8000/v1"
+    """Base URL for the ``openai`` backend."""
+    api_key: str = "EMPTY"
+    """API key for the ``openai`` backend; ``EMPTY`` works for local servers."""
     max_new_tokens: int = 512
     temperature: float = 0.2
     json_mode: bool = True
