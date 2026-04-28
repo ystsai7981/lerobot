@@ -109,7 +109,10 @@ class VideoFrameProvider:
 
         if misses:
             decoded = self._decode(record.episode_index, misses)
-            for i, img in zip(miss_indices, decoded, strict=True):
+            # decoder may return fewer frames than requested when some
+            # timestamps fall outside the video; pair what we have and
+            # leave the rest as None to be filtered below.
+            for i, img in zip(miss_indices, decoded):
                 out[i] = img
                 key = (record.episode_index, round(float(timestamps[i]), 6))
                 if len(self._cache) >= self.cache_size:
