@@ -68,6 +68,14 @@ class VlmConfig:
     json_mode: bool = True
     batch_size: int = 4
     tensor_parallel_size: int = 1
+    gpu_memory_utilization: float = 0.9
+    """Fraction of GPU memory vllm allocates for weights + KV cache.
+    Lower (e.g. 0.7) when the vision encoder needs cuDNN workspace, or to
+    avoid CUDNN_STATUS_NOT_INITIALIZED on tight VRAM (30B BF16 on 80 GB)."""
+    max_model_len: int | None = None
+    """Cap context length. ``None`` keeps the model's default; on H100 80 GB
+    a 30B BF16 model often needs ``max_model_len=8192`` or smaller to leave
+    room for KV cache."""
     trust_remote_code: bool = True
     """Pass ``trust_remote_code`` to HF auto-classes. Required for many
     newer VL checkpoints (Qwen3.x FP8, etc.) that ship custom loader code."""
