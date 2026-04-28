@@ -317,6 +317,9 @@ def _to_openai_message(message: dict[str, Any]) -> dict[str, Any]:
                 out_blocks.append(
                     {"type": "image_url", "image_url": {"url": _pil_to_data_url(img)}}
                 )
+        elif block_type == "video_url":
+            # Pass through to the OpenAI-compatible server unchanged.
+            out_blocks.append({"type": "video_url", "video_url": block["video_url"]})
         else:
             out_blocks.append(block)
     return {"role": message["role"], "content": out_blocks}

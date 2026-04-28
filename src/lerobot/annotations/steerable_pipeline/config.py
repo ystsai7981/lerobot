@@ -35,6 +35,18 @@ class Module1Config:
     max_video_frames: int = 32
     min_subtask_seconds: float = 1.5
     plan_max_steps: int = 8
+    use_video_url: bool = False
+    """When True (and backend supports it, e.g. ``openai``), Module 1
+    sends a ``video_url`` content block pointing at the episode's mp4
+    file instead of pre-decoded frames. Lets the server sample frames at
+    its own ``fps`` — no in-process conv3d cost. The video file is
+    extracted as a per-episode subclip to ``staging/.video_clips/`` so
+    the model sees only this episode's frames."""
+    use_video_url_fps: float = 1.0
+    """Frame-rate hint to send to the server (mm_processor_kwargs.fps).
+    Only used when ``use_video_url=True``. ``1.0`` = sample 1 frame per
+    second, which is plenty for subtask-boundary detection on most
+    manipulation episodes."""
 
 
 @dataclass

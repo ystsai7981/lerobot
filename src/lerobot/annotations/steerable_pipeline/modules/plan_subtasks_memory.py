@@ -21,8 +21,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from pathlib import Path
+
 from ..config import Module1Config
-from ..frames import FrameProvider, null_provider, to_video_block
+from ..frames import (
+    FrameProvider,
+    VideoFrameProvider,
+    episode_clip_path,
+    null_provider,
+    to_video_block,
+    to_video_url_block,
+)
 from ..prompts import load as load_prompt
 from ..reader import EpisodeRecord
 from ..staging import EpisodeStaging
@@ -151,14 +160,26 @@ class PlanSubtasksMemoryModule:
         if record.row_count == 0 or not record.frame_timestamps:
             return []
         episode_duration = record.frame_timestamps[-1] - record.frame_timestamps[0]
-        video_frames = self.frame_provider.video_for_episode(record, self.config.max_video_frames)
         prompt = load_prompt("module_1_subtasks").format(
             episode_task=record.episode_task,
             min_subtask_seconds=self.config.min_subtask_seconds,
             max_steps=self.config.plan_max_steps,
             episode_duration=f"{episode_duration:.3f}",
         )
-        content = [*to_video_block(video_frames), {"type": "text", "text": prompt}]
+        if self.config.use_video_url and isinstance(self.frame_provider, VideoFrameProvider):
+            cache_dir = Path(self.frame_provider.root) / ".annotate_staging" / ".video_clips"
+            clip = episode_clip_path(record, self.frame_provider, cache_dir)
+            video_block = (
+                to_video_url_block(f"file://{clip}", fps=self.config.use_video_url_fps)
+                if clip is not None
+                else []
+            )
+        else:
+            video_frames = self.frame_provider.video_for_episode(
+                record, self.config.max_video_frames
+            )
+            video_block = to_video_block(video_frames)
+        content = [*video_block, {"type": "text", "text": prompt}]
         messages = [{"role": "user", "content": content}]
         result = self.vlm.generate_json([messages])[0]
         spans = result.get("subtasks") if isinstance(result, dict) else None

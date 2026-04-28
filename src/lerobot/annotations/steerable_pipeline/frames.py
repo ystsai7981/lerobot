@@ -203,3 +203,62 @@ def to_video_block(images: list[Any]) -> list[dict[str, Any]]:
     if not images:
         return []
     return [{"type": "video", "video": list(images)}]
+
+
+def to_video_url_block(url: str | None, fps: float = 2.0) -> list[dict[str, Any]]:
+    """Wrap a video file URL as one ``video_url`` block.
+
+    Used by the ``openai`` backend (transformers serve / vllm serve /
+    ktransformers serve), where the server handles frame sampling.
+    Returns ``[]`` when ``url`` is ``None`` so the caller can splat.
+    """
+    if not url:
+        return []
+    return [{"type": "video_url", "video_url": {"url": url}, "fps": fps}]
+
+
+def episode_clip_path(
+    record: EpisodeRecord,
+    provider: "VideoFrameProvider",
+    cache_dir: Path,
+) -> Path | None:
+    """Extract the episode's subclip to ``cache_dir/ep_{idx:06d}.mp4``.
+
+    Returns ``None`` if the dataset has no video tracks. Skips re-extract
+    when the cached clip already exists. Uses ``ffmpeg`` via subprocess
+    with stream-copy where possible (no re-encode) for speed.
+    """
+    import subprocess  # noqa: PLC0415
+
+    if provider.camera_key is None:
+        return None
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out_path = cache_dir / f"ep_{record.episode_index:06d}.mp4"
+    if out_path.exists() and out_path.stat().st_size > 0:
+        return out_path
+    ep = provider._meta.episodes[record.episode_index]
+    from_timestamp = float(ep[f"videos/{provider.camera_key}/from_timestamp"])
+    to_timestamp = float(ep[f"videos/{provider.camera_key}/to_timestamp"])
+    src = provider.root / provider._meta.get_video_file_path(
+        record.episode_index, provider.camera_key
+    )
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{from_timestamp:.3f}",
+        "-to",
+        f"{to_timestamp:.3f}",
+        "-i",
+        str(src),
+        "-c",
+        "copy",
+        str(out_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    return out_path if out_path.exists() and out_path.stat().st_size > 0 else None
