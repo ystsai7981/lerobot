@@ -299,6 +299,11 @@ class HILSerlProcessorConfig:
     inverse_kinematics: InverseKinematicsConfig | None = None
     reward_classifier: RewardClassifierConfig | None = None
     max_gripper_pos: float | None = 100.0
+    # Only used when ``control_mode == "leader"``. ``False`` (default) emits a
+    # 4-D position+gripper action matching the gamepad path; ``True`` emits the
+    # PR #2596 7-D action with rotation deltas (requires ``wx/wy/wz`` step
+    # sizes in ``inverse_kinematics.end_effector_step_sizes``).
+    use_rotation: bool = False
 
 
 @EnvConfig.register_subclass(name="gym_manipulator")

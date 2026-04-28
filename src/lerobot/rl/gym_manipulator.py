@@ -493,9 +493,11 @@ def make_processors(
 
     # Leader-follower control mode: leader haptically tracks follower until the
     # human toggles intervention with SPACE, at which point leader joints are
-    # converted into 7-D EE deltas (dx, dy, dz, dwx, dwy, dwz, gripper) by
-    # ``LeaderFollowerProcessor`` before being consumed by
-    # ``InterventionActionProcessorStep``.
+    # converted into EE deltas by ``LeaderFollowerProcessor`` and consumed by
+    # ``InterventionActionProcessorStep``. With ``use_rotation=False`` the
+    # action is the 4-D ``[dx, dy, dz, gripper]`` matching the gamepad path;
+    # with ``True`` it is the PR #2596 7-D ``[dx, dy, dz, dwx, dwy, dwz, gripper]``.
+    leader_use_rotation = bool(getattr(cfg.processor, "use_rotation", False))
     if control_mode == "leader":
         if not isinstance(teleop_device, SO101LeaderFollower):
             raise ValueError(
@@ -514,6 +516,7 @@ def make_processors(
                 kinematics=kinematics_solver,
                 end_effector_step_sizes=cfg.processor.inverse_kinematics.end_effector_step_sizes,
                 use_gripper=cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else False,
+                use_rotation=leader_use_rotation,
                 max_gripper_pos=cfg.processor.max_gripper_pos
                 if cfg.processor.max_gripper_pos is not None
                 else 100.0,
@@ -523,7 +526,7 @@ def make_processors(
     action_pipeline_steps.append(
         InterventionActionProcessorStep(
             use_gripper=cfg.processor.gripper.use_gripper if cfg.processor.gripper is not None else False,
-            use_rotation=(control_mode == "leader"),
+            use_rotation=(control_mode == "leader" and leader_use_rotation),
             terminate_on_success=terminate_on_success,
         )
     )
