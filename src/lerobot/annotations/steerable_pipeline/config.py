@@ -76,9 +76,12 @@ class VlmConfig:
     """Cap context length. ``None`` keeps the model's default; on H100 80 GB
     a 30B BF16 model often needs ``max_model_len=8192`` or smaller to leave
     room for KV cache."""
-    trust_remote_code: bool = True
-    """Pass ``trust_remote_code`` to HF auto-classes. Required for many
-    newer VL checkpoints (Qwen3.x FP8, etc.) that ship custom loader code."""
+    trust_remote_code: bool = False
+    """Pass ``trust_remote_code`` to HF auto-classes. Default ``False`` —
+    only enable for models that actually ship custom code in their repo
+    (rare for first-class VL releases). On Qwen3-VL it triggers an
+    std::bad_alloc post-load even though the official transformers class
+    is sufficient, so leaving this off is safest."""
     camera_key: str | None = None
     """Override the camera stream used for keyframe attachment. ``None`` picks
     the first ``observation.images.*`` key the dataset declares."""
