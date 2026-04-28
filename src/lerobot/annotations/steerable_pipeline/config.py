@@ -68,6 +68,9 @@ class VlmConfig:
     json_mode: bool = True
     batch_size: int = 4
     tensor_parallel_size: int = 1
+    trust_remote_code: bool = True
+    """Pass ``trust_remote_code`` to HF auto-classes. Required for many
+    newer VL checkpoints (Qwen3.x FP8, etc.) that ship custom loader code."""
     camera_key: str | None = None
     """Override the camera stream used for keyframe attachment. ``None`` picks
     the first ``observation.images.*`` key the dataset declares."""

@@ -180,17 +180,22 @@ def _make_transformers_client(config: VlmConfig) -> VlmClient:
             "transformers version. Install transformers>=4.45 (which has AutoModelForImageTextToText) "
             "for VL models."
         )
-    processor = AutoProcessor.from_pretrained(config.model_id)
+    processor = AutoProcessor.from_pretrained(
+        config.model_id, trust_remote_code=config.trust_remote_code
+    )
     # ``low_cpu_mem_usage=True`` avoids a transformers-internal staging
     # buffer that has caused std::bad_alloc on Qwen3-line architectures
     # even on hosts with TBs of RAM (the failing alloc is in the
     # post-load tensor-placement path, not a real OOM).
     # ``device_map='auto'`` then streams shards directly to the GPU.
+    # ``trust_remote_code`` is required for many newer VL releases
+    # (Qwen3.6-FP8, etc.) that ship a custom loader in the repo.
     model = auto_cls.from_pretrained(
         config.model_id,
         torch_dtype="auto",
         device_map="auto",
         low_cpu_mem_usage=True,
+        trust_remote_code=config.trust_remote_code,
     )
     model.eval()
 
