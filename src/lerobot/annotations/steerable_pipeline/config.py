@@ -82,23 +82,13 @@ class VlmConfig:
     backend: str = "openai"
     """One of ``vllm``, ``transformers``, ``openai``, or ``stub`` (tests only).
 
-    Default ``openai`` paired with ``use_hf_inference_providers=True``
-    routes requests through HF Inference Providers — no local GPU
-    needed. Switch to ``vllm`` / ``transformers`` for in-process
-    inference."""
-    model_id: str = "Qwen/Qwen3-VL-30B-A3B-Instruct:novita"
+    Default ``openai`` talks to a local OpenAI-compatible server (vllm /
+    transformers) which the CLI auto-spawns when ``auto_serve=True``."""
+    model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct"
     api_base: str = "http://localhost:8000/v1"
     """Base URL for the ``openai`` backend."""
     api_key: str = "EMPTY"
     """API key for the ``openai`` backend; ``EMPTY`` works for local servers."""
-    use_hf_inference_providers: bool = True
-    """Route requests through https://router.huggingface.co/v1 using your
-    ``HF_TOKEN`` env var as the API key. Default ``True`` — no local GPU
-    needed. The CLI flips ``auto_serve`` off automatically when this is
-    set. Use ``model_id`` of the form
-    ``Qwen/Qwen3-VL-30B-A3B-Instruct:novita`` to pin a specific provider,
-    or omit ``:provider`` to let HF route. Set ``False`` to fall back to
-    a local server (vllm serve / transformers serve / external)."""
     auto_serve: bool = True
     """When True with ``backend=openai``, the CLI probes ``api_base``
     first; if no server answers, it spawns one (default:

@@ -336,48 +336,25 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
     auto_serve = config.auto_serve
     api_bases: list[str] = [api_base]
 
-    if config.use_hf_inference_providers:
-        api_base = "https://router.huggingface.co/v1"
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY") or ""
-        if not token:
-            try:
-                from huggingface_hub import get_token  # noqa: PLC0415
-
-                token = get_token() or ""
-            except Exception:  # noqa: BLE001
-                token = ""
-        if not token:
-            raise RuntimeError(
-                "use_hf_inference_providers=True needs an HF token. Either set "
-                "HF_TOKEN in the environment, or run `huggingface-cli login` once."
+    print(
+        f"[lerobot-annotate] backend=openai model={config.model_id} "
+        f"api_base={api_base} auto_serve={auto_serve}",
+        flush=True,
+    )
+    if auto_serve:
+        if config.parallel_servers > 1:
+            print(
+                f"[lerobot-annotate] spawning {config.parallel_servers} parallel servers",
+                flush=True,
             )
-        api_key = token
-        auto_serve = False
-        print(
-            f"[lerobot-annotate] HF Inference Providers: routing model={config.model_id} "
-            f"via {api_base}",
-            flush=True,
-        )
-    else:
-        print(
-            f"[lerobot-annotate] backend=openai model={config.model_id} "
-            f"api_base={api_base} auto_serve={auto_serve}",
-            flush=True,
-        )
-        if auto_serve:
-            if config.parallel_servers > 1:
-                print(
-                    f"[lerobot-annotate] spawning {config.parallel_servers} parallel servers",
-                    flush=True,
-                )
-                api_bases = _spawn_parallel_inference_servers(config)
-            elif _server_is_up(api_base):
-                print(f"[lerobot-annotate] reusing server already up at {api_base}", flush=True)
-            else:
-                print("[lerobot-annotate] no server reachable; spawning one", flush=True)
-                api_base = _spawn_inference_server(config)
-                api_bases = [api_base]
-                print(f"[lerobot-annotate] server ready at {api_base}", flush=True)
+            api_bases = _spawn_parallel_inference_servers(config)
+        elif _server_is_up(api_base):
+            print(f"[lerobot-annotate] reusing server already up at {api_base}", flush=True)
+        else:
+            print("[lerobot-annotate] no server reachable; spawning one", flush=True)
+            api_base = _spawn_inference_server(config)
+            api_bases = [api_base]
+            print(f"[lerobot-annotate] server ready at {api_base}", flush=True)
 
     clients = [OpenAI(base_url=base, api_key=api_key) for base in api_bases]
     client = clients[0]
