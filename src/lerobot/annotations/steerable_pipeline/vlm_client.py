@@ -169,11 +169,10 @@ def _make_vllm_client(config: VlmConfig) -> VlmClient:
     llm = LLM(**llm_kwargs)
 
     def _gen(batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float) -> list[str]:
-        params = SamplingParams(
-            max_tokens=max_tok,
-            temperature=temp,
-            guided_decoding={"json": {}} if config.json_mode else None,
-        )
+        # ``guided_decoding`` would speed up parsing but its API differs across
+        # vllm releases (dict vs GuidedDecodingParams). The _GenericTextClient
+        # wrapper already has a one-retry JSON-recovery path, so we skip it.
+        params = SamplingParams(max_tokens=max_tok, temperature=temp)
         prompts = [_messages_to_prompt(m) for m in batch]
         outputs = llm.generate(prompts, params)
         return [o.outputs[0].text for o in outputs]
