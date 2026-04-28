@@ -162,6 +162,13 @@ class ExecutorConfig:
     slurm_gpus: int = 1
     slurm_time: str = "06:00:00"
     workers: int = 1
+    episode_parallelism: int = 16
+    """Number of episodes processed concurrently within each module phase.
+    Each in-flight episode sends 3–5 dependent VLM calls; bumping this is
+    how you actually saturate ``parallel_servers`` and ``client_concurrency``
+    — without it, the executor loops one episode at a time and the
+    inference servers sit ~90% idle. Set to ``1`` for strict serial
+    execution."""
 
 
 @dataclass
