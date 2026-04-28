@@ -58,7 +58,9 @@ class SO101LeaderFollower(SO101Leader):
 
         # Leader-follower state
         self.is_intervening = False
-        self.leader_torque_enabled = True
+        # Initialize as False because configure() disables torque at connect time;
+        # send_action() will re-enable it on the first call when not intervening.
+        self.leader_torque_enabled = False
 
         # Tracking error for automatic intervention detection
         self.leader_tracking_error_queue = deque(maxlen=4)
