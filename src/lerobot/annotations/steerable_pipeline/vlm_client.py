@@ -33,6 +33,7 @@ The client speaks one method, :meth:`VlmClient.generate_json`, which:
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -291,25 +292,30 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
 
     client = OpenAI(base_url=api_base, api_key=config.api_key)
 
+    # ``mm_processor_kwargs`` is a vllm-specific extra; transformers serve
+    # rejects it with HTTP 422. Send it only when explicitly opted in via
+    # an env var (e.g. ``LEROBOT_OPENAI_SEND_MM_KWARGS=1`` for vllm).
+    send_mm_kwargs = os.environ.get(
+        "LEROBOT_OPENAI_SEND_MM_KWARGS", ""
+    ).lower() in {"1", "true", "yes"}
+
     def _gen(
         batch: Sequence[Sequence[dict[str, Any]]], max_tok: int, temp: float
     ) -> list[str]:
         outs: list[str] = []
         for messages in batch:
             api_messages, mm_kwargs = _to_openai_messages(messages)
-            extra_body: dict[str, Any] = {}
-            if mm_kwargs:
-                extra_body["mm_processor_kwargs"] = {
-                    **mm_kwargs,
-                    "do_sample_frames": True,
+            kwargs: dict[str, Any] = {
+                "model": config.model_id,
+                "messages": api_messages,
+                "max_tokens": max_tok,
+                "temperature": temp,
+            }
+            if send_mm_kwargs and mm_kwargs:
+                kwargs["extra_body"] = {
+                    "mm_processor_kwargs": {**mm_kwargs, "do_sample_frames": True}
                 }
-            response = client.chat.completions.create(
-                model=config.model_id,
-                messages=api_messages,
-                max_tokens=max_tok,
-                temperature=temp,
-                extra_body=extra_body or None,
-            )
+            response = client.chat.completions.create(**kwargs)
             outs.append(response.choices[0].message.content or "")
         return outs
 
