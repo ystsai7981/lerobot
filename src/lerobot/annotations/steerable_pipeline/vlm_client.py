@@ -455,7 +455,16 @@ def _spawn_parallel_inference_servers(config: VlmConfig) -> list[str]:
     api_bases: list[str] = []
     procs: list[subprocess.Popen] = []
     ready_events: list[threading.Event] = []
-    ready_markers = ("Uvicorn running", "Application startup complete")
+    # Multiple readiness signals — uvicorn's own banner is suppressed at
+    # ``--uvicorn-log-level warning``, so we also accept vllm's own
+    # "Starting vLLM API server" line and the route-listing line. The
+    # HTTP probe below is the ultimate fallback.
+    ready_markers = (
+        "Uvicorn running",
+        "Application startup complete",
+        "Starting vLLM API server",
+        "Available routes are",
+    )
     # Single lock for all server-stream threads so multibyte chars from
     # different servers don't interleave and tear UTF-8 sequences.
     print_lock = threading.Lock()
@@ -505,6 +514,16 @@ def _spawn_parallel_inference_servers(config: VlmConfig) -> list[str]:
                     ev.set()
 
         threading.Thread(target=_stream, args=(i, proc, ready), daemon=True).start()
+
+        def _probe(idx: int, base: str, ev: threading.Event, p: subprocess.Popen) -> None:
+            while not ev.is_set() and p.poll() is None:
+                if _server_is_up(base):
+                    print(f"[server-{idx}] ready (http probe)", flush=True)
+                    ev.set()
+                    return
+                time.sleep(2)
+
+        threading.Thread(target=_probe, args=(i, api_base, ready, proc), daemon=True).start()
 
     def _shutdown() -> None:
         for i, p in enumerate(procs):
@@ -588,7 +607,23 @@ def _spawn_inference_server(config: VlmConfig) -> str:
     # rescans its cache on every model-list request, which can exceed
     # the urllib timeout and trigger an infinite probe loop.
     ready_event = threading.Event()
-    ready_markers = ("Uvicorn running", "Application startup complete")
+    # See _spawn_parallel_inference_servers for why we accept these.
+    ready_markers = (
+        "Uvicorn running",
+        "Application startup complete",
+        "Starting vLLM API server",
+        "Available routes are",
+    )
+
+    def _probe() -> None:
+        while not ready_event.is_set() and proc.poll() is None:
+            if _server_is_up(api_base):
+                print("[server] ready (http probe)", flush=True)
+                ready_event.set()
+                return
+            time.sleep(2)
+
+    threading.Thread(target=_probe, daemon=True).start()
 
     def _stream_output() -> None:
         # Read raw chunks instead of iterating lines so tqdm progress
