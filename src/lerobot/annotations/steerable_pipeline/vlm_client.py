@@ -173,8 +173,10 @@ def _make_vllm_client(config: VlmConfig) -> VlmClient:
         # vllm releases (dict vs GuidedDecodingParams). The _GenericTextClient
         # wrapper already has a one-retry JSON-recovery path, so we skip it.
         params = SamplingParams(max_tokens=max_tok, temperature=temp)
-        prompts = [_messages_to_prompt(m) for m in batch]
-        outputs = llm.generate(prompts, params)
+        # ``llm.chat`` handles chat-template application + multimodal input
+        # extraction (image/video blocks) internally, which ``llm.generate``
+        # does not.
+        outputs = llm.chat([list(m) for m in batch], params)
         return [o.outputs[0].text for o in outputs]
 
     return _GenericTextClient(_gen, config)
