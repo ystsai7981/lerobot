@@ -355,12 +355,21 @@ class GripperVelocityToJoint(RobotActionProcessorStep):
         clip_max: The maximum allowed gripper joint position.
         discrete_gripper: If True, interpret the input as a discrete class index
             {0 = close, 1 = stay, 2 = open}, matching `GamepadTeleop.GripperAction`.
+        scale_velocity: If True, scale the continuous gripper velocity by ``clip_max``
+            so a normalized [-1, 1] command produces a meaningful position delta
+            (PR #2596).
+        use_ik_solution: If True, integrate the gripper position on top of the
+            previous IK solution stored in ``complementary_data['IK_solution']``
+            instead of the raw joint observation (PR #2596). Useful for
+            leader-follower haptic teleop where the IK solution is more stable.
     """
 
     speed_factor: float = 20.0
     clip_min: float = 0.0
     clip_max: float = 100.0
     discrete_gripper: bool = False
+    scale_velocity: bool = False
+    use_ik_solution: bool = False
 
     def action(self, action: RobotAction) -> RobotAction:
         observation = self.transition.get(TransitionKey.OBSERVATION).copy()
@@ -370,10 +379,15 @@ class GripperVelocityToJoint(RobotActionProcessorStep):
         if observation is None:
             raise ValueError("Joints observation is require for computing robot kinematics")
 
-        q_raw = np.array(
-            [float(v) for k, v in observation.items() if isinstance(k, str) and k.endswith(".pos")],
-            dtype=float,
-        )
+        if self.use_ik_solution and "IK_solution" in self.transition.get(
+            TransitionKey.COMPLEMENTARY_DATA, {}
+        ):
+            q_raw = self.transition.get(TransitionKey.COMPLEMENTARY_DATA)["IK_solution"]
+        else:
+            q_raw = np.array(
+                [float(v) for k, v in observation.items() if isinstance(k, str) and k.endswith(".pos")],
+                dtype=float,
+            )
         if q_raw is None:
             raise ValueError("Joints observation is require for computing robot kinematics")
 
@@ -382,6 +396,9 @@ class GripperVelocityToJoint(RobotActionProcessorStep):
             # Negation accounts for SO100 sign (joint position increases on close).
             #   0 -> +clip_max (close), 1 -> 0 (stay), 2 -> -clip_max (open)
             gripper_vel = -(gripper_vel - 1) * self.clip_max
+        elif self.scale_velocity:
+            # Scale a continuous [-1, 1] velocity command into joint-position units.
+            gripper_vel = gripper_vel * self.clip_max
 
         # Compute desired gripper position
         delta = gripper_vel * float(self.speed_factor)
