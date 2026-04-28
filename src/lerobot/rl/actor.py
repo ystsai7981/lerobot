@@ -291,11 +291,7 @@ def act_with_policy(
         with policy_timer:
             normalized_observation = preprocessor.process_observation(observation)
             action = policy.select_action(batch=normalized_observation)
-            # Unnormalize only the continuous part. When `num_discrete_actions` is set,
-            # `select_action` concatenates an argmax index in env space at the last dim;
-            # action stats cover the continuous dims only, so feeding the full vector to
-            # the unnormalizer would shape-mismatch and would also corrupt the discrete
-            # index by treating it as a normalized value.
+            # Unnormalize only the continuous part.
             if cfg.policy.num_discrete_actions is not None:
                 continuous_action = postprocessor.process_action(action[..., :-1])
                 discrete_action = action[..., -1:].to(
@@ -346,9 +342,6 @@ def act_with_policy(
             "discrete_penalty": torch.tensor(
                 [new_transition[TransitionKey.COMPLEMENTARY_DATA].get("discrete_penalty", 0.0)]
             ),
-            # Forward the intervention flag so the learner can route this transition
-            # into the offline replay buffer (see `process_transitions` in learner.py).
-            # Use the plain string key so the payload survives torch.load(weights_only=True).
             TeleopEvents.IS_INTERVENTION.value: is_intervention,
         }
         # Create transition for learner (convert to old format)

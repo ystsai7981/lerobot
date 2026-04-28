@@ -73,11 +73,7 @@ class RLTrainer:
 
 
 def preprocess_rl_batch(preprocessor: Any, batch: BatchType) -> BatchType:
-    """Apply policy preprocessing to RL observations only.
-
-    This mirrors the pre-refactor SAC learner behavior where actions are left
-    unchanged and only state/next_state observations are normalized.
-    """
+    """Apply policy preprocessing to RL observations only."""
     observations = batch["state"]
     next_observations = batch["next_state"]
     batch["state"] = preprocessor.process_observation(observations)

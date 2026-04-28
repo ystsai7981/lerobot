@@ -303,11 +303,6 @@ def test_end_to_end_parameters_flow(cfg, data_size):
         assert torch.allclose(received_params[key], input_params[key])
 
 
-# ---------------------------------------------------------------------------
-# Regression test: learner algorithm integration (no gRPC required)
-# ---------------------------------------------------------------------------
-
-
 def test_learner_algorithm_wiring():
     """Verify that make_algorithm constructs an SACAlgorithm from config,
     make_optimizers_and_scheduler() creates the right optimizers, update() works, and

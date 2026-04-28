@@ -31,10 +31,7 @@ class TrainRLServerPipelineConfig(TrainPipelineConfig):
     # TODO: Make `TrainPipelineConfig.dataset` optional
     dataset: DatasetConfig | None = None  # type: ignore[assignment] # because the parent class has made it's type non-optional
 
-    # Algorithm config (a `draccus.ChoiceRegistry` subclass selected by `type`,
-    # e.g. ``"type": "sac"``). When omitted, defaults to a SAC config with
-    # default hyperparameters. The top-level `policy` is injected into
-    # ``algorithm.policy_config`` at validation time.
+    # Algorithm config.
     algorithm: RLAlgorithmConfig | None = None
 
     # Data mixer strategy name. Currently supports "online_offline".
@@ -48,7 +45,5 @@ class TrainRLServerPipelineConfig(TrainPipelineConfig):
         if self.algorithm is None:
             self.algorithm = make_algorithm_config("sac")
 
-        # The pipeline owns the policy config; inject it so the algorithm can
-        # introspect policy architecture (e.g. ``num_discrete_actions``).
         if getattr(self.algorithm, "policy_config", None) is None:
             self.algorithm.policy_config = self.policy

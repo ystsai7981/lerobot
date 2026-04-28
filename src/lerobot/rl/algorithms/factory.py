@@ -21,7 +21,7 @@ from lerobot.rl.algorithms.configs import RLAlgorithmConfig
 
 
 def make_algorithm_config(algorithm_type: str, **kwargs) -> RLAlgorithmConfig:
-    """Instantiate an :class:`RLAlgorithmConfig` from its registered type name.
+    """Instantiate an `RLAlgorithmConfig` from its registered type name.
 
     Args:
         algorithm_type: Registry key of the algorithm (e.g. ``"sac"``).

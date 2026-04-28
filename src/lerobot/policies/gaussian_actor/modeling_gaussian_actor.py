@@ -36,15 +36,6 @@ DISCRETE_DIMENSION_INDEX = -1  # Gripper is always the last dimension
 class GaussianActorPolicy(
     PreTrainedPolicy,
 ):
-    """Gaussian actor + observation encoder.
-
-    Policy-side ``nn.Module`` used by SAC and related maximum-entropy continuous
-    control algorithms. It owns the actor network (``Policy``) and the observation
-    encoder (``GaussianActorObservationEncoder``); the critics, temperature, and
-    Bellman-update logic live on the algorithm side
-    (see ``lerobot.rl.algorithms.sac``).
-    """
-
     config_class = GaussianActorConfig
     name = "gaussian_actor"
 

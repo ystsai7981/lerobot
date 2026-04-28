@@ -21,11 +21,7 @@ from lerobot.rl.buffer import ReplayBuffer, concatenate_batch_transitions
 
 
 class DataMixer(abc.ABC):
-    """Abstract interface for all data mixing strategies.
-
-    Subclasses must implement ``sample(batch_size)`` and may override
-    ``get_iterator`` for specialised iteration.
-    """
+    """Abstract interface for all data mixing strategies."""
 
     @abc.abstractmethod
     def sample(self, batch_size: int) -> BatchType:
@@ -38,25 +34,13 @@ class DataMixer(abc.ABC):
         async_prefetch: bool = True,
         queue_size: int = 2,
     ):
-        """Infinite iterator that yields batches.
-
-        The default implementation repeatedly calls ``self.sample()``.
-        Subclasses with underlying buffer iterators (async prefetch)
-        should override this for better throughput.
-        """
+        """Infinite iterator that yields batches."""
         while True:
             yield self.sample(batch_size)
 
 
 class OnlineOfflineMixer(DataMixer):
-    """Mixes transitions from an online and an optional offline replay buffer.
-
-    When both buffers are present, each batch is constructed by sampling
-    ``ceil(batch_size * online_ratio)`` from the online buffer and the
-    remainder from the offline buffer, then concatenating.
-
-    This mixer assumes both online and offline buffers are present.
-    """
+    """Mixes transitions from an online and an offline replay buffer."""
 
     def __init__(
         self,
