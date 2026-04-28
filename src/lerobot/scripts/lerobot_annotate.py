@@ -95,6 +95,34 @@ def annotate(cfg: AnnotationPipelineConfig) -> None:
         for w in summary.validation_report.warnings:
             logger.warning(w)
 
+    if cfg.push_to_hub:
+        _push_to_hub(root, cfg)
+
+
+def _push_to_hub(root: Path, cfg: AnnotationPipelineConfig) -> None:
+    """Upload the annotated dataset directory to the Hugging Face Hub."""
+    from huggingface_hub import HfApi  # noqa: PLC0415
+
+    repo_id = cfg.push_to_hub
+    commit_message = cfg.push_commit_message or "Add steerable annotations (lerobot-annotate)"
+    api = HfApi()
+    print(f"[lerobot-annotate] creating/locating dataset repo {repo_id}...", flush=True)
+    api.create_repo(
+        repo_id=repo_id,
+        repo_type="dataset",
+        private=cfg.push_private,
+        exist_ok=True,
+    )
+    print(f"[lerobot-annotate] uploading {root} -> {repo_id}...", flush=True)
+    api.upload_folder(
+        folder_path=str(root),
+        repo_id=repo_id,
+        repo_type="dataset",
+        commit_message=commit_message,
+        ignore_patterns=[".annotate_staging/**", "**/.DS_Store"],
+    )
+    print(f"[lerobot-annotate] uploaded to https://huggingface.co/datasets/{repo_id}", flush=True)
+
 
 def main() -> None:
     annotate()

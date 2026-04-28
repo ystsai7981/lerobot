@@ -201,5 +201,14 @@ class AnnotationPipelineConfig:
     skip_validation: bool = False
     only_episodes: tuple[int, ...] | None = None
 
+    push_to_hub: str | None = None
+    """If set, after the pipeline completes, upload the annotated dataset
+    root to the Hugging Face Hub as a dataset repo with this id (e.g.
+    ``pepijn/super_poulain_steerable``). Creates the repo if missing."""
+    push_private: bool = False
+    """When ``push_to_hub`` is set, create the repo as private."""
+    push_commit_message: str | None = None
+    """Override the commit message used for the hub upload."""
+
     def resolved_staging_dir(self, root: Path) -> Path:
         return self.staging_dir if self.staging_dir is not None else root / ".annotate_staging"
