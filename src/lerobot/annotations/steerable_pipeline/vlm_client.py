@@ -164,7 +164,17 @@ class _GenericTextClient:
                 },
             ]
             retry_text = self.generate_text([retry], max_tok, temp)[0]
-            out.append(_strip_to_json(retry_text))
+            try:
+                out.append(_strip_to_json(retry_text))
+            except (ValueError, json.JSONDecodeError):
+                # After retry: log preview and return None instead of crashing
+                # the whole pipeline. Modules treat None as "skip".
+                preview = retry_text.strip().replace("\n", " ")[:200]
+                print(
+                    f"[vlm] WARNING: failed to parse JSON after retry; preview: {preview!r}",
+                    flush=True,
+                )
+                out.append(None)
         return out
 
 
