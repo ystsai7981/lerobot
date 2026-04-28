@@ -296,12 +296,19 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
     ) -> list[str]:
         outs: list[str] = []
         for messages in batch:
-            api_messages = [_to_openai_message(m) for m in messages]
+            api_messages, mm_kwargs = _to_openai_messages(messages)
+            extra_body: dict[str, Any] = {}
+            if mm_kwargs:
+                extra_body["mm_processor_kwargs"] = {
+                    **mm_kwargs,
+                    "do_sample_frames": True,
+                }
             response = client.chat.completions.create(
                 model=config.model_id,
                 messages=api_messages,
                 max_tokens=max_tok,
                 temperature=temp,
+                extra_body=extra_body or None,
             )
             outs.append(response.choices[0].message.content or "")
         return outs
@@ -400,36 +407,62 @@ def _spawn_inference_server(config: VlmConfig) -> str:
     )
 
 
-def _to_openai_message(message: dict[str, Any]) -> dict[str, Any]:
-    """Convert an internal message dict to OpenAI chat format.
+def _to_openai_messages(
+    messages: Sequence[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Convert internal messages to OpenAI chat format.
 
-    Internal image/video blocks (using PIL.Image objects) become
-    OpenAI ``image_url``/``video_url`` items via base64 data URLs.
+    Returns ``(api_messages, mm_kwargs)``. Multimodal-processor kwargs
+    (``fps`` from ``video_url`` blocks) are extracted out so the caller
+    can pass them via ``extra_body.mm_processor_kwargs`` rather than
+    inside the content blocks (which transformers serve rejects).
+
+    File-URL video blocks are inlined as base64 data URLs.
     """
-    content = message.get("content")
-    if not isinstance(content, list):
-        return {"role": message["role"], "content": content}
-    out_blocks: list[dict[str, Any]] = []
-    for block in content:
-        block_type = block.get("type") if isinstance(block, dict) else None
-        if block_type == "text":
-            out_blocks.append({"type": "text", "text": block.get("text", "")})
-        elif block_type == "image":
-            out_blocks.append(
-                {"type": "image_url", "image_url": {"url": _pil_to_data_url(block["image"])}}
-            )
-        elif block_type == "video":
-            frames = block.get("video", [])
-            for img in frames:
+    out_messages: list[dict[str, Any]] = []
+    mm_kwargs: dict[str, Any] = {}
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            out_messages.append({"role": message["role"], "content": content})
+            continue
+        out_blocks: list[dict[str, Any]] = []
+        for block in content:
+            block_type = block.get("type") if isinstance(block, dict) else None
+            if block_type == "text":
+                out_blocks.append({"type": "text", "text": block.get("text", "")})
+            elif block_type == "image":
                 out_blocks.append(
-                    {"type": "image_url", "image_url": {"url": _pil_to_data_url(img)}}
+                    {"type": "image_url", "image_url": {"url": _pil_to_data_url(block["image"])}}
                 )
-        elif block_type == "video_url":
-            # Pass through to the OpenAI-compatible server unchanged.
-            out_blocks.append({"type": "video_url", "video_url": block["video_url"]})
-        else:
-            out_blocks.append(block)
-    return {"role": message["role"], "content": out_blocks}
+            elif block_type == "video":
+                frames = block.get("video", [])
+                for img in frames:
+                    out_blocks.append(
+                        {"type": "image_url", "image_url": {"url": _pil_to_data_url(img)}}
+                    )
+            elif block_type == "video_url":
+                video_url = dict(block["video_url"])
+                url = video_url.get("url", "")
+                if url.startswith("file://"):
+                    video_url["url"] = _file_to_data_url(url[len("file://") :])
+                out_blocks.append({"type": "video_url", "video_url": video_url})
+                fps = block.get("fps")
+                if fps is not None:
+                    mm_kwargs["fps"] = fps
+            else:
+                out_blocks.append(block)
+        out_messages.append({"role": message["role"], "content": out_blocks})
+    return out_messages, mm_kwargs
+
+
+def _file_to_data_url(path: str) -> str:
+    """Read a local video file and return a base64 ``data:video/mp4`` URL."""
+    import base64  # noqa: PLC0415
+
+    with open(path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("ascii")
+    return f"data:video/mp4;base64,{b64}"
 
 
 def _pil_to_data_url(image: Any) -> str:
