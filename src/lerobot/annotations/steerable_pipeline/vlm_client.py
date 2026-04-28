@@ -403,12 +403,30 @@ def _spawn_inference_server(config: VlmConfig) -> str:
     ready_markers = ("Uvicorn running", "Application startup complete")
 
     def _stream_output() -> None:
+        # Read raw chunks instead of iterating lines so tqdm progress
+        # bars (which overwrite using \r) flush in real time.
         assert proc.stdout is not None
-        for line in proc.stdout:
-            sys.stdout.write(f"[server] {line}")
+        buf = ""
+        prefix_started = False
+        while True:
+            ch = proc.stdout.read(1)
+            if ch == "":
+                # process exited; flush any tail
+                if buf:
+                    sys.stdout.write(buf)
+                    sys.stdout.flush()
+                return
+            if not prefix_started:
+                sys.stdout.write("[server] ")
+                prefix_started = True
+            sys.stdout.write(ch)
             sys.stdout.flush()
-            if any(marker in line for marker in ready_markers):
-                ready_event.set()
+            buf += ch
+            if ch in ("\n", "\r"):
+                if any(marker in buf for marker in ready_markers):
+                    ready_event.set()
+                buf = ""
+                prefix_started = False
 
     threading.Thread(target=_stream_output, daemon=True).start()
 
