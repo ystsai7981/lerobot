@@ -44,7 +44,7 @@ from lerobot.robots.so_follower.robot_kinematic_processor import (
 )
 from lerobot.robots.so_follower.so_follower import SO101Follower
 from lerobot.teleoperators.so_leader.config_so_leader import SO101LeaderConfig
-from lerobot.teleoperators.so_leader.so_leader import SO101Leader
+from lerobot.teleoperators.so_leader.so101_leader_follower import SO101LeaderFollower
 from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.rotation import Rotation
 
@@ -170,6 +170,13 @@ class ForwardKinematicsJointsToEETargetAction(RobotActionProcessorStep):
             ]
         )
 
+        # Deadband: zero out tiny deltas so encoder noise on the leader does not
+        # twitch the follower when the operator is holding the leader still.
+        # 5 % of step size = ~0.2 mm / ~0.25 deg with the current step sizes.
+        if float(np.linalg.norm(delta_pos)) < 0.05 and float(np.linalg.norm(delta_rvec)) < 0.05:
+            delta_pos = np.zeros_like(delta_pos)
+            delta_rvec = np.zeros_like(delta_rvec)
+
         # Check if any of the normalized deltas exceed 1.0
 
         max_normalized_pos = max(
@@ -217,11 +224,17 @@ FPS = 20
 
 # Initialize the robot and teleoperator config
 follower_config = SO101FollowerConfig(port="/dev/usb_follower_arm_a", id="follower_arm_a", use_degrees=True)
-leader_config = SO101LeaderConfig(port="/dev/usb_leader_arm_a", id="leader_arm_a", use_degrees=True)
+leader_config = SO101LeaderConfig(
+    port="/dev/usb_leader_arm_a",
+    id="leader_arm_a",
+    use_degrees=True,
+    leader_follower_mode=True,
+    use_gripper=True,
+)
 
 # Initialize the robot and teleoperator
 follower = SO101Follower(follower_config)
-leader = SO101Leader(leader_config)
+leader = SO101LeaderFollower(leader_config)
 
 # NOTE: It is highly recommended to use the urdf in the SO-ARM100 repo: https://github.com/TheRobotStudio/SO-ARM100/blob/main/Simulation/SO101/so101_new_calib.urdf
 follower_kinematics_solver = RobotKinematics(
@@ -273,7 +286,12 @@ ee_to_follower_joints = RobotProcessorPipeline[tuple[RobotAction, RobotObservati
             # end_effector_step_sizes={"x": 0.006, "y": 0.01, "z": 0.005},
             end_effector_step_sizes=end_effector_step_sizes,
             motor_names=list(follower.bus.motors.keys()),
-            use_latched_reference=False,
+            # Latch the reference so the follower stops drifting when the leader
+            # is held still. With ``False`` the reference is recomputed every
+            # step from the previous IK solution, which combined with motor lag
+            # and encoder noise creates a positive feedback loop (follower keeps
+            # moving even when leader is stationary).
+            use_latched_reference=True,
             use_ik_solution=True,
         ),
         LogRobotAction(),
@@ -297,7 +315,10 @@ ee_to_follower_joints = RobotProcessorPipeline[tuple[RobotAction, RobotObservati
         InverseKinematicsRLStep(
             kinematics=follower_kinematics_solver,
             motor_names=list(follower.bus.motors.keys()),
-            initial_guess_current_joints=False,
+            # Seed IK from the follower's measured joints (not the previous IK
+            # output) so any residual drift in the commanded pose does not feed
+            # back into the next IK solve.
+            initial_guess_current_joints=True,
         ),
         LogRobotAction(),
     ],
@@ -315,21 +336,39 @@ start_time = time.perf_counter()
 reset_follower_position(follower, np.array(reset_pose))
 reset_follower_position(leader, np.array(reset_pose))
 precise_sleep(5.0 - (time.perf_counter() - start_time))
-# time.sleep(10)
-leader.bus.sync_write("Torque_Enable", 0)
 
 # Init rerun viewer
 # init_rerun(session_name="so100_so100_EE_teleop")
 
 transition = None
+prev_intervening = False
 
 print("Starting teleop loop...")
+print("  - Press SPACE to toggle intervention (leader controls follower)")
+print("  - Press 's' for success, ESC for failure, 'r' to re-record")
+
 while True:
-    print("New loop iteration")
     t0 = time.perf_counter()
 
     # Get robot observation
     robot_obs = follower.get_observation()
+
+    # Haptic follow: when not intervening, push follower joints onto the
+    # leader so the leader tracks the follower (torque on, low PID gains).
+    # When intervening, this call is a no-op inside SO101LeaderFollower.
+    leader.send_action(robot_obs)
+
+    # Re-latch the EE reference each time the user starts a new intervention
+    # so the follower does not jump from a stale reference pose.
+    if leader.is_intervening and not prev_intervening:
+        ee_to_follower_joints.reset()
+        transition = None
+    prev_intervening = leader.is_intervening
+
+    if not leader.is_intervening:
+        # Idle: follower holds its current pose; do not command anything.
+        precise_sleep(max(1.0 / FPS - (time.perf_counter() - t0), 0.0))
+        continue
 
     # Get teleop observation
     leader_joints_obs = leader.get_action()
