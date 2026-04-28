@@ -76,13 +76,57 @@ class StubVlmClient:
 
 def _strip_to_json(text: str) -> Any:
     text = text.strip()
+    # Strip <think>...</think> blocks (Qwen3 Thinking style)
+    while "<think>" in text and "</think>" in text:
+        start = text.find("<think>")
+        end = text.find("</think>", start) + len("</think>")
+        text = (text[:start] + text[end:]).strip()
+    # Strip ```json ... ``` fences from chat-tuned backbones
     if text.startswith("```"):
-        # tolerate ```json ... ``` fences from chat-tuned backbones
         first = text.find("\n")
         last = text.rfind("```")
         if first != -1 and last != -1 and last > first:
             text = text[first + 1 : last].strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except (ValueError, json.JSONDecodeError):
+        pass
+    # Fall back to extracting the first balanced {...} block.
+    obj_text = _extract_first_json_object(text)
+    if obj_text is None:
+        raise json.JSONDecodeError("No JSON object found", text, 0)
+    return json.loads(obj_text)
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the first balanced ``{...}`` substring, ignoring braces in
+    string literals. Returns ``None`` if no balanced block is found."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 @dataclass
