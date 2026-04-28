@@ -72,23 +72,26 @@ class Module3Config:
 class VlmConfig:
     """Shared Qwen-VL client configuration."""
 
-    backend: str = "vllm"
+    backend: str = "openai"
     """One of ``vllm``, ``transformers``, ``openai``, or ``stub`` (tests only).
 
-    The ``openai`` backend talks to any OpenAI-compatible server — works
-    with ``vllm serve``, ``transformers serve``, ``ktransformers serve``,
-    or hosted endpoints. Set ``api_base`` and (optionally) ``api_key``."""
-    model_id: str = "Qwen/Qwen3.6-27B-FP8"
+    Default ``openai`` paired with ``use_hf_inference_providers=True``
+    routes requests through HF Inference Providers — no local GPU
+    needed. Switch to ``vllm`` / ``transformers`` for in-process
+    inference."""
+    model_id: str = "Qwen/Qwen3-VL-30B-A3B-Instruct:novita"
     api_base: str = "http://localhost:8000/v1"
     """Base URL for the ``openai`` backend."""
     api_key: str = "EMPTY"
     """API key for the ``openai`` backend; ``EMPTY`` works for local servers."""
-    use_hf_inference_providers: bool = False
-    """When True, route requests through https://router.huggingface.co/v1
-    using your ``HF_TOKEN`` env var as the API key. The CLI flips
-    ``auto_serve`` off automatically — no local server is spawned. Use
-    ``model_id`` of the form ``Qwen/Qwen3-VL-30B-A3B-Instruct:novita`` to
-    pin a specific provider, or omit ``:provider`` to let HF route."""
+    use_hf_inference_providers: bool = True
+    """Route requests through https://router.huggingface.co/v1 using your
+    ``HF_TOKEN`` env var as the API key. Default ``True`` — no local GPU
+    needed. The CLI flips ``auto_serve`` off automatically when this is
+    set. Use ``model_id`` of the form
+    ``Qwen/Qwen3-VL-30B-A3B-Instruct:novita`` to pin a specific provider,
+    or omit ``:provider`` to let HF route. Set ``False`` to fall back to
+    a local server (vllm serve / transformers serve / external)."""
     auto_serve: bool = True
     """When True with ``backend=openai``, the CLI probes ``api_base``
     first; if no server answers, it spawns one (default:
