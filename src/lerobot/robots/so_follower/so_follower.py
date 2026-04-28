@@ -168,6 +168,12 @@ class SOFollower(Robot):
                     self.bus.write("Protection_Current", motor, 250)  # 50% of max current to avoid burnout
                     self.bus.write("Overload_Torque", motor, 25)  # 25% torque when overloaded
 
+            # Set Goal_Position = Present_Position while torque is still disabled so
+            # that when torque is re-enabled at the end of this block the motors have
+            # zero positional error and do not snap to a stale register value.
+            present = self.bus.sync_read("Present_Position")
+            self.bus.sync_write("Goal_Position", present)
+
     def setup_motors(self) -> None:
         for motor in reversed(self.bus.motors):
             input(f"Connect the controller board to the '{motor}' motor only and press enter.")
