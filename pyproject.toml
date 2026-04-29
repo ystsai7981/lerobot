@@ -302,7 +302,7 @@ lerobot-annotate="lerobot.scripts.lerobot_annotate:main"
 
 # ---------------- Tool Configurations ----------------
 [tool.setuptools.package-data]
-lerobot = ["envs/*.json"]
+lerobot = ["envs/*.json", "annotations/steerable_pipeline/prompts/*.txt"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
