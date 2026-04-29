@@ -456,10 +456,12 @@ def _spawn_parallel_inference_servers(config: VlmConfig) -> list[str]:
         f"--uvicorn-log-level warning"
     )
 
+    num_gpus = config.num_gpus if config.num_gpus > 0 else n
     for i in range(n):
         port = config.serve_port + i
+        gpu = i % num_gpus
         env = _os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = str(i)
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu)
         cmd = base_cmd
         if "{port}" in cmd:
             cmd = cmd.replace("{port}", str(port))
@@ -467,7 +469,7 @@ def _spawn_parallel_inference_servers(config: VlmConfig) -> list[str]:
             cmd = f"{cmd} --port {port}"
         api_base = f"http://localhost:{port}/v1"
         api_bases.append(api_base)
-        print(f"[server-{i}] launching on GPU {i} port {port}: {cmd}", flush=True)
+        print(f"[server-{i}] launching on GPU {gpu} port {port}: {cmd}", flush=True)
         proc = subprocess.Popen(
             shlex.split(cmd),
             stdout=subprocess.PIPE,

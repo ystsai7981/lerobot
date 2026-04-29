@@ -108,10 +108,17 @@ class VlmConfig:
     this command (if present) is substituted per-replica."""
     parallel_servers: int = 1
     """When >1, spawn this many independent inference servers (each pinned
-    to one GPU via ``CUDA_VISIBLE_DEVICES`` and listening on
+    to a GPU via ``CUDA_VISIBLE_DEVICES`` and listening on
     ``serve_port + i``) and round-robin client requests across them.
     Useful when DP/TP NCCL setup is broken on the node — single-GPU
-    replicas don't need cross-GPU communication."""
+    replicas don't need cross-GPU communication. When
+    ``parallel_servers > num_gpus``, replicas are round-robin-assigned
+    to GPUs (e.g. 4 replicas on 2 GPUs → 0,1,0,1)."""
+    num_gpus: int = 0
+    """How many physical GPUs are available for round-robin replica
+    placement. ``0`` means ``parallel_servers`` (one GPU per replica,
+    backward-compatible default). Set this to ``2`` with
+    ``parallel_servers=4`` to pack 2 replicas per GPU."""
     client_concurrency: int = 16
     """Maximum number of in-flight chat requests the client issues in
     parallel. vllm batches them internally for free, so bumping this
