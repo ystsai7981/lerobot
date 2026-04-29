@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -140,6 +141,12 @@ class VlmConfig:
     camera_key: str | None = None
     """Override the camera stream used for keyframe attachment. ``None`` picks
     the first ``observation.images.*`` key the dataset declares."""
+    chat_template_kwargs: dict[str, Any] | None = None
+    """Forwarded as ``extra_body.chat_template_kwargs`` on every chat call.
+    Use this to pass model-specific template flags such as
+    ``{"enable_thinking": false}`` for Qwen3.5/Qwen3.6 to suppress the
+    reasoning preamble that otherwise eats the entire ``max_new_tokens``
+    budget before any JSON is emitted."""
 
 
 @dataclass

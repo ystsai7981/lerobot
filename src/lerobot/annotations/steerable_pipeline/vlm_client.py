@@ -380,10 +380,13 @@ def _make_openai_client(config: VlmConfig) -> VlmClient:
             "max_tokens": max_tok,
             "temperature": temp,
         }
+        extra_body: dict[str, Any] = {}
         if send_mm_kwargs and mm_kwargs:
-            kwargs["extra_body"] = {
-                "mm_processor_kwargs": {**mm_kwargs, "do_sample_frames": True}
-            }
+            extra_body["mm_processor_kwargs"] = {**mm_kwargs, "do_sample_frames": True}
+        if config.chat_template_kwargs:
+            extra_body["chat_template_kwargs"] = config.chat_template_kwargs
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         with rr_lock:
             chosen = clients[rr_counter["i"] % len(clients)]
             rr_counter["i"] += 1
