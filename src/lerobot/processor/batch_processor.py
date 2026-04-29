@@ -35,6 +35,7 @@ from .pipeline import (
     ProcessorStepRegistry,
     TransitionKey,
 )
+from lerobot.types import PolicyAction, EnvTransition
 
 
 @dataclass

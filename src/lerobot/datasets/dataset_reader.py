@@ -24,11 +24,11 @@ import torch
 from lerobot.datasets.audio_utils import decode_audio
 from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 from lerobot.datasets.feature_utils import (
-    DEFAULT_AUDIO_CHUNK_DURATION,
     check_delta_timestamps,
     get_delta_indices,
     get_hf_features_from_features,
 )
+from lerobot.datasets.utils import DEFAULT_AUDIO_CHUNK_DURATION
 from lerobot.datasets.io_utils import (
     hf_transform_to_torch,
     load_nested_dataset,
