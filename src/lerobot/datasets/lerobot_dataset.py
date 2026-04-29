@@ -386,6 +386,14 @@ class LeRobotDataset(torch.utils.data.Dataset):
         self._require_writer("add_frame")
         self.writer.add_frame(frame)
 
+    def add_microphones_recordings(self, microphones: dict) -> None:
+        """Add microphone recordings to the current episode buffer.
+
+        Delegates to :meth:`DatasetWriter.add_microphones_recordings`.
+        """
+        self._require_writer("add_microphones_recordings")
+        self.writer.add_microphones_recordings(microphones)
+
     def save_episode(self, episode_data: dict | None = None, parallel_encoding: bool = True) -> None:
         """Save the current episode buffer to disk.
 
