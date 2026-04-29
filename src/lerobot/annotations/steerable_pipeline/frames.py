@@ -225,8 +225,11 @@ def episode_clip_path(
     """Extract the episode's subclip to ``cache_dir/ep_{idx:06d}.mp4``.
 
     Returns ``None`` if the dataset has no video tracks. Skips re-extract
-    when the cached clip already exists. Uses ``ffmpeg`` via subprocess
-    with stream-copy where possible (no re-encode) for speed.
+    when the cached clip already exists. Re-encodes to H.264
+    (libx264) so the resulting mp4 is decodable by every downstream
+    video processor — stream-copy would inherit the source codec
+    (often AV1 in modern LeRobot datasets), which vllm's libav build
+    cannot decode.
     """
     import subprocess  # noqa: PLC0415
 
@@ -253,12 +256,19 @@ def episode_clip_path(
         f"{to_timestamp:.3f}",
         "-i",
         str(src),
-        "-c",
-        "copy",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
         str(out_path),
     ]
     try:
-        subprocess.run(cmd, check=True, timeout=120)
+        subprocess.run(cmd, check=True, timeout=300)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         return None
     return out_path if out_path.exists() and out_path.stat().st_size > 0 else None
