@@ -218,7 +218,10 @@ def test_writer_drops_subtask_index_idempotent(fixture_dataset_root: Path, tmp_p
     assert "subtask_index" not in table_a.column_names
     assert "language_persistent" in table_a.column_names
     assert "language_events" in table_a.column_names
-    assert "tools" in table_a.column_names
+    # The writer no longer emits a dataset-level ``tools`` column; the
+    # ``say`` tool schema lives as a code constant (``SAY_TOOL_SCHEMA``)
+    # so the parquet stays small and PR 2 doesn't extend PR 1's schema.
+    assert "tools" not in table_a.column_names
 
     # second pass — must produce identical bytes for the language columns
     records_again = list(iter_episodes(fixture_dataset_root))
@@ -248,7 +251,26 @@ def test_writer_normalize_rejects_misrouted_event_style() -> None:
         _normalize_event_row({"role": "assistant", "content": "oops", "style": "subtask", "tool_calls": None})
 
 
-def test_dataset_tools_column_present_with_say_schema(fixture_dataset_root: Path, tmp_path: Path) -> None:
+def test_say_tool_schema_constant_is_well_formed() -> None:
+    """``SAY_TOOL_SCHEMA`` (and ``DEFAULT_TOOLS``) replace the parquet
+    ``tools`` column — chat-template consumers import them directly.
+    """
+    from lerobot.annotations.steerable_pipeline.writer import (
+        DEFAULT_TOOLS,
+        SAY_TOOL_SCHEMA,
+    )
+
+    assert DEFAULT_TOOLS == [SAY_TOOL_SCHEMA]
+    assert SAY_TOOL_SCHEMA["function"]["name"] == "say"
+    params = SAY_TOOL_SCHEMA["function"]["parameters"]
+    assert params["properties"]["text"]["type"] == "string"
+    assert params["required"] == ["text"]
+
+
+def test_writer_does_not_add_tools_column(fixture_dataset_root: Path, tmp_path: Path) -> None:
+    """Re-running on a parquet that already has a legacy ``tools`` column
+    must drop it cleanly so reruns converge to the v3.1 schema.
+    """
     staging_dir = tmp_path / "stage"
     _stage_episode(
         staging_dir,
@@ -260,14 +282,7 @@ def test_dataset_tools_column_present_with_say_schema(fixture_dataset_root: Path
     records = list(iter_episodes(fixture_dataset_root))
     LanguageColumnsWriter().write_all(records, staging_dir, fixture_dataset_root)
     table = pq.read_table(fixture_dataset_root / "data" / "chunk-000" / "file-000.parquet")
-    tools = table.column("tools").to_pylist()
-    assert tools, "tools column missing"
-    decoded = json.loads(tools[0])
-    assert isinstance(decoded, list)
-    assert len(decoded) == 1
-    assert decoded[0]["function"]["name"] == "say"
-    params = decoded[0]["function"]["parameters"]
-    assert params["properties"]["text"]["type"] == "string"
+    assert "tools" not in table.column_names
 
 
 def test_speech_atom_shape_matches_plan_spec() -> None:

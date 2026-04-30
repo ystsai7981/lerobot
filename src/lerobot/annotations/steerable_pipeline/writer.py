@@ -25,8 +25,14 @@ For every episode the writer:
 5. for each frame, materializes the sublist of event rows whose timestamp
    exactly equals that frame's timestamp,
 6. drops the legacy ``subtask_index`` column,
-7. adds a top-level ``tools`` column containing the JSON schema for ``say``,
-8. writes the parquet shard back in place.
+7. writes the parquet shard back in place.
+
+The writer does NOT add a dataset-level ``tools`` column. Tool *calls* are
+emitted per-row via the existing ``tool_calls`` field on the v3.1 row
+struct (PR 1) for every speech atom. The tool *schema* (the description
+of the ``say`` function and its parameters) is a fixed code constant —
+``SAY_TOOL_SCHEMA`` below — and downstream chat-template consumers import
+it directly rather than reading a redundant per-row column.
 
 Invariants enforced here (and re-checked by the validator):
 
@@ -38,7 +44,6 @@ Invariants enforced here (and re-checked by the validator):
 
 from __future__ import annotations
 
-import json
 import logging
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -81,6 +86,19 @@ SAY_TOOL_SCHEMA: dict[str, Any] = {
         },
     },
 }
+"""Fixed JSON schema for the only tool the canonical recipe knows about.
+
+Kept here as a code constant rather than written as a parquet column so
+the v3.1 schema (PR 1) doesn't need to grow a redundant broadcast field
+that holds the same value on every row of every dataset. Downstream
+chat-template consumers (Pi0.5 processor, lerobot-dataset-visualizer)
+import this directly. If multi-tool-set support ever becomes real, the
+right place is ``meta/info.json["tools"]`` — adding it later is
+non-breaking; ripping out a parquet column already shipped is not.
+"""
+
+DEFAULT_TOOLS: list[dict[str, Any]] = [SAY_TOOL_SCHEMA]
+"""Convenience list for ``apply_chat_template(messages, tools=...)``."""
 
 
 def _row_persistent_sort_key(row: dict[str, Any]) -> tuple:
@@ -286,8 +304,13 @@ class LanguageColumnsWriter:
         for name in table.column_names:
             if drop_old and name == "subtask_index":
                 continue
-            if name in (LANGUAGE_PERSISTENT, LANGUAGE_EVENTS, "tools"):
+            if name in (LANGUAGE_PERSISTENT, LANGUAGE_EVENTS):
                 continue  # we'll re-add canonical versions
+            # Strip any legacy ``tools`` column previously emitted by older
+            # writers — the schema no longer uses it (constant lives in
+            # SAY_TOOL_SCHEMA / DEFAULT_TOOLS).
+            if name == "tools":
+                continue
             cols.append(table.column(name))
             names.append(name)
 
@@ -303,14 +326,6 @@ class LanguageColumnsWriter:
 
         cols.extend([persistent_arr, events_arr])
         names.extend([LANGUAGE_PERSISTENT, LANGUAGE_EVENTS])
-
-        # Dataset-level tools column. Store the JSON schema as a string per
-        # row (broadcast-identical, parquet dictionary-encodes it) — string
-        # storage avoids requiring pa.json_() on every consumer.
-        tools_json = json.dumps([SAY_TOOL_SCHEMA], sort_keys=True)
-        tools_arr = pa.array([tools_json] * table.num_rows, type=pa.string())
-        cols.append(tools_arr)
-        names.append("tools")
 
         return pa.Table.from_arrays(cols, names=names)
 

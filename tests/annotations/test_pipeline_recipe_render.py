@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -130,6 +129,7 @@ def test_pr1_canonical_recipe_renders_nonempty_from_pipeline_output(
     say = speech_rows[0]["tool_calls"][0]
     assert say["function"]["name"] == "say"
     assert isinstance(say["function"]["arguments"]["text"], str)
-    # Tools column carries the say schema
-    tools = json.loads(table.column("tools").to_pylist()[0])
-    assert tools and tools[0]["function"]["name"] == "say"
+    # PR 2 no longer writes a ``tools`` column — the say schema lives as a
+    # constant (``SAY_TOOL_SCHEMA``) so PR 1's row struct is the single
+    # source of truth for the v3.1 schema.
+    assert "tools" not in table.column_names

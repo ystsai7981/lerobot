@@ -20,8 +20,13 @@ rewrites the data shards in place:
 | speech tool-call atom (`style=null`, `say`) | `language_events`     | Module 2 |
 | `vqa` (user / assistant pair)               | `language_events`     | Module 3 |
 
-The writer also adds a dataset-level `tools` column carrying the JSON schema
-for the `say` tool call, and drops the legacy `subtask_index` column.
+The writer drops the legacy `subtask_index` column. It does **not** add a
+`tools` column to the parquet — the `say` tool's JSON schema is fixed and
+lives as a code constant (`SAY_TOOL_SCHEMA` / `DEFAULT_TOOLS` in
+`lerobot.annotations.steerable_pipeline.writer`), so the parquet stays
+small and PR 2 doesn't extend PR 1's schema. Chat-template consumers
+import the constant directly (e.g.
+`apply_chat_template(messages, tools=DEFAULT_TOOLS)`).
 
 ## How to run it locally or on SLURM
 
