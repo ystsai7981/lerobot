@@ -66,6 +66,22 @@ def annotate(cfg: AnnotationPipelineConfig) -> None:
 
     vlm = make_vlm_client(cfg.vlm)
     frame_provider = make_frame_provider(root, camera_key=cfg.vlm.camera_key)
+    # Surface the resolved cameras up front so silent Module-3-no-op
+    # regressions are obvious in job output rather than discovered post-hoc
+    # by counting parquet rows.
+    cam_keys = list(getattr(frame_provider, "camera_keys", []) or [])
+    logger.info(
+        "annotate: frame_provider default camera=%r, all cameras=%s",
+        getattr(frame_provider, "camera_key", None),
+        cam_keys,
+    )
+    if cfg.module_3.enabled and not cam_keys:
+        logger.warning(
+            "annotate: Module 3 (VQA) is enabled but no cameras were "
+            "resolved — Module 3 will produce zero VQA rows. Check "
+            "meta/info.json for observation.images.* features, or pass "
+            "--vlm.camera_key=<key> to seed the cameras list."
+        )
     module_1 = PlanSubtasksMemoryModule(vlm=vlm, config=cfg.module_1, frame_provider=frame_provider)
     module_2 = InterjectionsAndSpeechModule(
         vlm=vlm, config=cfg.module_2, seed=cfg.seed, frame_provider=frame_provider
