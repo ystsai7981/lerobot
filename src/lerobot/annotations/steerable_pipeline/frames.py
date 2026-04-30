@@ -185,29 +185,13 @@ class VideoFrameProvider:
     def _decode(
         self, episode_index: int, timestamps: list[float], camera_key: str
     ) -> list[Any]:
-        import os as _os  # noqa: PLC0415
-
-        from PIL import Image  # noqa: PLC0415
-
-        from lerobot.datasets.video_utils import decode_video_frames  # noqa: PLC0415
-
         ep = self._meta.episodes[episode_index]
         from_timestamp = ep[f"videos/{camera_key}/from_timestamp"]
         shifted = [from_timestamp + ts for ts in timestamps]
         video_path = self.root / self._meta.get_video_file_path(episode_index, camera_key)
-        # ``torchcodec`` import currently bad-allocs on cu128/torch-2.8 in
-        # some environments; default to ``pyav`` (always available via
-        # the ``av`` package) and let users override with
-        # LEROBOT_VIDEO_BACKEND=torchcodec when their stack supports it.
-        backend = _os.environ.get("LEROBOT_VIDEO_BACKEND", "pyav")
+
         try:
-            frames = decode_video_frames(
-                video_path,
-                shifted,
-                self.tolerance_s,
-                backend=backend,
-                return_uint8=True,
-            )
+            return _decode_pyav_direct(video_path, shifted, self.tolerance_s)
         except Exception as exc:
             # Log loudly the first time decoding fails so silent
             # Module-3-no-op (every prompt skipped because frames_at returned
@@ -218,24 +202,79 @@ class VideoFrameProvider:
 
                 logging.getLogger(__name__).warning(
                     "VideoFrameProvider._decode failed for episode=%s camera=%s "
-                    "video_path=%s backend=%s: %s",
+                    "video_path=%s: %s",
                     episode_index,
                     camera_key,
                     video_path,
-                    backend,
                     exc,
                     exc_info=True,
                 )
                 self._warned_decode_fail = True
             return []
-        # frames: [N, C, H, W] uint8, RGB
-        out: list[Any] = []
-        arr = frames.cpu().numpy() if hasattr(frames, "cpu") else frames
-        for i in range(arr.shape[0]):
-            chw = arr[i]
-            hwc = chw.transpose(1, 2, 0)
-            out.append(Image.fromarray(hwc, mode="RGB"))
-        return out
+
+
+def _decode_pyav_direct(
+    video_path: Any, timestamps: list[float], tolerance_s: float
+) -> list[Any]:
+    """Decode the requested timestamps from ``video_path`` using PyAV directly.
+
+    Bypasses ``lerobot.datasets.video_utils.decode_video_frames`` entirely
+    because its "pyav" path actually goes through
+    ``decode_video_frames_torchvision`` → ``torchvision.io.VideoReader``,
+    which was removed in torchvision >= 0.22 (the vllm/vllm-openai:latest
+    container ships with torchvision 0.25). The annotation pipeline only
+    needs a handful of PIL images per (episode, ts), so we can decode them
+    with PyAV without any torch dependency at all.
+
+    Returns one ``PIL.Image`` per requested timestamp, in the same order.
+    Any timestamp the decoder couldn't reach is silently dropped (mirrors
+    the previous behaviour); callers filter ``None``/missing entries.
+    """
+    import av  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
+
+    if not timestamps:
+        return []
+
+    targets = sorted(set(timestamps))
+    seek_to = max(0.0, min(targets) - max(0.5, tolerance_s))
+
+    container = av.open(str(video_path))
+    try:
+        stream = container.streams.video[0]
+        # PyAV needs the seek target in stream timebase ticks.
+        if stream.time_base is None:
+            seek_pts = 0
+        else:
+            seek_pts = int(seek_to / float(stream.time_base))
+        try:
+            container.seek(seek_pts, any_frame=False, backward=True, stream=stream)
+        except av.AVError:
+            # Some streams reject the explicit seek; fall back to decoding from start.
+            container.seek(0)
+
+        results: dict[float, Any] = {}
+        target_iter = iter(targets)
+        next_target = next(target_iter, None)
+        for frame in container.decode(stream):
+            if next_target is None:
+                break
+            ts = float(frame.pts * frame.time_base) if frame.pts is not None else None
+            if ts is None:
+                continue
+            # Walk past targets we've already overshot — we keep the closest
+            # frame within tolerance.
+            while next_target is not None and ts >= next_target - tolerance_s:
+                if abs(ts - next_target) <= tolerance_s or ts >= next_target:
+                    img = frame.to_image()  # PIL.Image.Image (RGB)
+                    results.setdefault(next_target, img)
+                    next_target = next(target_iter, None)
+                else:
+                    break
+    finally:
+        container.close()
+
+    return [results[ts] for ts in timestamps if ts in results]
 
     def video_for_episode(
         self,
