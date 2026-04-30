@@ -120,33 +120,56 @@ class InterjectionsAndSpeechModule:
         record: EpisodeRecord,
         subtask_spans: Sequence[dict[str, Any]],
     ) -> list[dict[str, Any]]:
+        """Generate interjections aligned with the actual demo trajectory.
+
+        Teleop data is frozen — the robot already executed every step in
+        the video. A *counterfactual* interjection like "actually skip
+        the wipe" contradicts what then happens in the video, which is
+        what qwen36moe-10/11 surfaced as low-quality interjections.
+
+        Instead, anchor every interjection at a subtask boundary and
+        write it as a natural user request for the *upcoming* subtask.
+        The robot's visible next behavior IS the interjection's effect,
+        so the training signal stays consistent: interjection text →
+        plan refresh → action stream all line up.
+        """
         if self.config.max_interjections_per_episode <= 0:
+            return []
+        if len(subtask_spans) < 2:
+            # Need at least one transition (subtask 0 → subtask 1).
             return []
         # Deterministic per-episode RNG so reruns are stable across SLURM jobs.
         rng = random.Random(f"{self.seed}:{record.episode_index}:interjection")
-        candidate_ts = [t for t in record.frame_timestamps if t >= self.config.interjection_min_t]
-        if not candidate_ts:
+
+        # Boundaries: the start time of every subtask except the first
+        # (which is just t0 and is covered by the initial-task speech atom).
+        boundaries: list[tuple[float, str, str]] = []
+        for i in range(1, len(subtask_spans)):
+            ts = float(subtask_spans[i]["start"])
+            if ts < self.config.interjection_min_t:
+                continue
+            prev_text = (subtask_spans[i - 1].get("text") or "").strip()
+            next_text = (subtask_spans[i].get("text") or "").strip()
+            if not next_text:
+                continue
+            boundaries.append((ts, prev_text, next_text))
+        if not boundaries:
             return []
-        # Pick at most ``max_interjections_per_episode`` distinct timestamps.
-        # Previously capped at ``len(candidate_ts) // 4`` — that floor was
-        # only relevant for very short episodes; for any real ~20-30s
-        # episode it had no effect, but it silently set the count to 0 on
-        # short fixtures. Just take ``min(max, len)`` directly.
-        n = min(self.config.max_interjections_per_episode, len(candidate_ts))
-        if n <= 0:
-            return []
-        chosen = sorted(rng.sample(candidate_ts, n))
+
+        n = min(self.config.max_interjections_per_episode, len(boundaries))
+        chosen = sorted(rng.sample(boundaries, n), key=lambda b: b[0])
 
         out: list[dict[str, Any]] = []
-        for t in chosen:
+        for t, prev_subtask, next_subtask in chosen:
             t_snap = _snap_to_frame(t, record.frame_timestamps)
+            # Window straddles the boundary so the VLM sees the end of the
+            # previous subtask and the start of the next one — same
+            # conditioning the policy will see at training time.
             window_ts = self._window_timestamps(t_snap, record.frame_timestamps)
-            current_subtask = (
-                self._subtask_at(subtask_spans, t_snap) or record.episode_task
-            )
             prompt = load_prompt("module_2_interjection").format(
                 episode_task=record.episode_task,
-                current_subtask=current_subtask,
+                prev_subtask=prev_subtask or "(starting from initial state)",
+                next_subtask=next_subtask,
                 timestamp=t_snap,
                 window_seconds=self.config.interjection_window_seconds,
             )
@@ -177,13 +200,14 @@ class InterjectionsAndSpeechModule:
     def _window_timestamps(
         self, t_anchor: float, frame_timestamps: Sequence[float]
     ) -> list[float]:
-        """Return a small set of frame timestamps spanning the lead-up to ``t``.
+        """Return a small set of frame timestamps centered on ``t_anchor``.
 
-        The VLM receives roughly ``num_frames`` frames over the
-        ``window_seconds`` immediately before ``t_anchor``, snapped to
-        actual source frame timestamps. This gives the interjection
-        prompt enough temporal context to read what's visibly happening
-        instead of looking at one frozen frame.
+        The window straddles the subtask boundary the interjection sits
+        on: roughly half the frames cover the end of the previous
+        subtask, half cover the start of the next one. The VLM therefore
+        sees BOTH what just finished AND what's about to start, which is
+        the conditioning we need to write a natural "now please do X"
+        request that matches the visible upcoming behavior.
         """
         if not frame_timestamps:
             return [t_anchor]
@@ -192,11 +216,15 @@ class InterjectionsAndSpeechModule:
             return [t_anchor]
         window = float(self.config.interjection_window_seconds)
         step = window / max(1, n - 1)
-        targets = [t_anchor - step * (n - 1 - i) for i in range(n)]
+        # Center the window on the anchor so half lands before, half after.
+        start_offset = -window / 2.0
+        targets = [t_anchor + start_offset + step * i for i in range(n)]
+        last_ts = float(frame_timestamps[-1])
         snapped: list[float] = []
         seen: set[float] = set()
         for tgt in targets:
-            t = _snap_to_frame(max(0.0, tgt), frame_timestamps)
+            clamped = min(last_ts, max(0.0, tgt))
+            t = _snap_to_frame(clamped, frame_timestamps)
             if t not in seen:
                 seen.add(t)
                 snapped.append(t)

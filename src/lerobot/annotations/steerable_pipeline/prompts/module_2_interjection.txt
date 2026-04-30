@@ -1,34 +1,46 @@
-You are simulating a user mid-episode interruption for a robot doing:
-"{episode_task}".
+You are generating training data for a Hi Robot-style hierarchical
+robot policy. The robot in this demonstration has ALREADY executed
+every step shown in the video — we cannot retroactively change the
+action stream. To keep training data consistent with the video, the
+"interjection" must align with what the robot is *about to do next* in
+the demonstration, framed as a natural mid-task user request.
 
-The images above show roughly the last {window_seconds:.1f} seconds of the
-demonstration in chronological order. Read what the robot is actually
-doing right now and write an interruption that responds to that exact
-visible activity — not a generic one.
+The episode's overall task: "{episode_task}".
 
-Current subtask the robot is executing: {current_subtask}
-Time into episode: {timestamp:.2f}s
+The images above show roughly {window_seconds:.1f} seconds straddling a
+subtask boundary in the demonstration:
 
-Synthesize ONE realistic interruption the user might say at this moment,
-plus the robot's verbal acknowledgement.
+- Subtask the robot just finished: "{prev_subtask}"
+- Subtask the robot is about to start: "{next_subtask}"
+- Time into episode: {timestamp:.2f}s
 
-Context (Hi Robot, Shi 2025) — interjections fall into one of these
-scenario types:
-- negative task: "actually skip X" (where X is the visible current step)
-- situated correction: "that's not the right one, use the blue one"
-- specific constraint: "be more careful with that one"
-- preference: "could you also do Y after this"
+Write ONE interjection the user would naturally say at this moment to
+prompt / confirm / encourage the robot to do "{next_subtask}". Phrase it
+like a real human mid-task remark — conversational, varied, sometimes
+just a nudge, sometimes a clarification, sometimes a small constraint
+that the upcoming motion happens to satisfy. Plus the robot's verbal
+acknowledgement.
 
-Interruption rules:
-- Must reference an object, motion, or sub-step that is visible in the
-  attached frames OR explicitly named in the current subtask. Do not
-  invent objects that aren't there.
-- Must change the plan in a non-trivial way (a new constraint, skipped
-  step, or correction).
+Hard rules:
+
+- The interjection MUST be consistent with the next subtask. The user
+  cannot ask for something different from what the robot then does in
+  the video. If you're tempted to say "actually skip X" or "do Y
+  instead", DO NOT — those would contradict the demonstration.
+- The interjection must reference an object, location, or action that
+  is plausible given the visible scene and the next subtask text.
 - One sentence each. Conversational, not robotic.
+
+Style examples (vary the phrasing — don't reuse these verbatim):
+  - "Now go ahead and {next_subtask}."
+  - "Great, can you {next_subtask} next?"
+  - "{next_subtask}, please."
+  - "Before you continue, please {next_subtask}."
+  - "Looking good — {next_subtask} now."
+  - "Okay, {next_subtask}."
 
 Output strictly valid JSON:
   {{
-    "interjection": "<single sentence the user says about what is visible right now>",
-    "speech":       "<single sentence the robot speaks back, acknowledging the change>"
+    "interjection": "<single sentence the user says, asking for the next subtask>",
+    "speech":       "<single sentence the robot speaks back, confirming and starting>"
   }}
