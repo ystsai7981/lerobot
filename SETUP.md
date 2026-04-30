@@ -137,7 +137,27 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
    - Linux 通常 `/dev/ttyACM0`、`/dev/ttyACM1`,記得 `sudo chmod 666 /dev/ttyACM*` 給存取權
 2. **設定馬達 ID 與 baudrate**(全新馬達一次性):`uv run lerobot-setup-motors --robot.type=so101_follower --robot.port=/dev/ttyACMx`,leader 同理
 3. **找相機 index** — `ls /dev/video*` 或 `v4l2-ctl --list-devices`,測試後填入 `cameras.{front,wrist}.index_or_path`
-4. **找 end-effector 工作範圍** — `uv run lerobot-find-joint-limits ...`,把輸出的 `Min/Max ee position` 填回 `inverse_kinematics.end_effector_bounds.{min,max}`
+4. **找 end-effector 工作範圍**(用 leader 帶動 follower 走過任務區域):
+   ```bash
+   uv run lerobot-find-joint-limits \
+     --robot.type=so101_follower \
+     --robot.port=/dev/ttyACM0 \
+     --robot.id=follower \
+     --teleop.type=so101_leader \
+     --teleop.port=/dev/ttyACM1 \
+     --teleop.id=leader
+   ```
+   - 跑起來後 follower 會解力,**抓 leader 引導 follower 走遍要解任務需要走過的所有位置**(起點 / 目標 / 中間轉折點都要走到)
+   - Ctrl+C 結束,會印出類似:
+     ```
+     Max ee position [0.2417 0.2012 0.1027]
+     Min ee position [0.1663 -0.0823 0.0336]
+     Max joint positions [...]
+     Min joint positions [...]
+     ```
+   - 把 `Max ee position` / `Min ee position` 三個浮點數填回 `configs/env_config_so101.json` 的 `inverse_kinematics.end_effector_bounds.max` / `.min`
+   - **小盒子比大盒子好**(訓練快很多);包足任務區域後留 1–2 cm 餘裕、`z` 下界 ≥ 桌面 + 1 cm 防撞桌
+   - 範例對比:目前佔位符是 `±1.0 m` 立方體(完全沒約束),教程 SO100 範例是 `~8 × 28 × 7 cm` 小盒,差超過 100 倍,請務必縮到任務範圍
 5. **錄 demonstrations**:
    ```bash
    cd ~/lerobot
