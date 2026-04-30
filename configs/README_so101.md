@@ -33,25 +33,46 @@ URDF 已下載至 `assets/so101/so101_new_calib.urdf`(來自 [TheRobotStudio/SO-
 - 6 關節順序:`shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper`
 - placo IK solver 已驗證可正確 load URDF 並做 FK(這台電腦上跑過)
 
-## 切換到 SO101 leader teleop(取代 gamepad)
+## 切換 teleop:gamepad ↔ leader+keyboard
 
-如果想用 SO101 leader 手臂遙操(比 gamepad 順):
+預設 `env_config_so101.json` 用 **gamepad**(穩定、現成可用)。如果你也有 SO101 leader 手臂,可改用 **`env_config_so101_leader.json`** — 用 leader 帶動 follower、用鍵盤標 success/failure。
 
-```diff
-   "teleop": {
--    "type": "gamepad",
--    "use_gripper": true
-+    "type": "so101_leader",
-+    "port": "/dev/ttyACM1",
-+    "use_degrees": true
-   },
-   ...
-   "processor": {
--    "control_mode": "gamepad",
-+    "control_mode": "leader",
+| | gamepad (`env_config_so101.json`) | leader+keyboard (`env_config_so101_leader.json`) |
+|---|---|---|
+| Teleop type | `"gamepad"` | `"so101_leader_hil"` |
+| 動作來源 | 左/右搖桿 + 觸發鍵 | 用手帶 leader 跑(透過 FK 轉成 EE-delta) |
+| Episode 事件 | gamepad 按鈕(Y/A/X) | 鍵盤(`s` / `esc` / `r`) |
+| Intervention 切換 | RB 按住 | 鍵盤 `space` 切換 (toggle) |
+| Gripper | 觸發鍵 OPEN/CLOSE | leader gripper 角度變化(可調 threshold) |
+| 教程支援程度 | 官方 | 我們的 fork 才有(upstream 沒接通)|
+
+> ⚠️ 重要:upstream 教程說可以 `control_mode: "leader"` 配合 `so101_leader` teleop,但實際 code **沒實作 `get_teleop_events()`**,跑下去會 `TypeError`。我們這個 `so101_leader_hil` 是補上那塊空缺(leader 動作 + 鍵盤事件 + FK 把關節轉 EE-delta)。
+
+### 用 leader+keyboard mode 的指令
+
+```bash
+cd ~/lerobot
+uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_leader.json
 ```
 
-注意:用 leader 時,episode success / fail / rerecord / 介入 等仍然要靠 **鍵盤** — `s` = success、`esc` = fail、`space` = 介入 / 還回控制。
+### 鍵盤對映(只在 `so101_leader_hil` mode 下)
+
+| 鍵 | 功能 |
+|---|---|
+| `s` | SUCCESS(reward=1,結束 episode) |
+| `esc` | FAILURE(reward=0,結束 episode) |
+| `r` | RERECORD(丟掉這集重來) |
+| `space` | toggle INTERVENTION(切換 leader 是否覆蓋 policy) |
+
+### Leader+keyboard config 額外參數(只在 `so101_leader_hil` 用得到)
+
+| 欄位 | 預設 | 說明 |
+|---|---|---|
+| `urdf_path` | `assets/so101/so101_new_calib.urdf` | 給 placo 做 FK 用,leader 跟 follower 同 URDF |
+| `target_frame_name` | `gripper_frame_link` | URDF 內 EE frame 名(不要改) |
+| `end_effector_step_sizes` | `{x:.025, y:.025, z:.025}` | **必須跟 `processor.inverse_kinematics.end_effector_step_sizes` 一致**,否則人控 scale 會跟 policy 不同 |
+| `gripper_open_threshold_deg` | `1.0` | leader gripper 一幀內度數變化 ≥ 此值 → 命令 OPEN |
+| `gripper_close_threshold_deg` | `-1.0` | ≤ 此值 → CLOSE,介於兩者 → STAY |
 
 ## 跑指令
 

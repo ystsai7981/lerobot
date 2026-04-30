@@ -126,8 +126,9 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
 - [x] uv 環境裝好,placo / SO101 configs / hilserl env / make_robot_env 全部 import OK
 - [x] **SO101 URDF + 13 個 STL meshes** 下載至 `assets/so101/`(來自 [TheRobotStudio/SO-ARM100/Simulation/SO101](https://github.com/TheRobotStudio/SO-ARM100/tree/main/Simulation/SO101),16 MB)
 - [x] placo `RobotKinematics` 已驗證可正確 load URDF,joint_names = `[shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]`,FK at zero pose 給合理 EE 位置
-- [x] **`configs/env_config_so101.json`** 寫好(新版嵌套 schema),draccus 解析通過 — 全 schema 對得上 dataclass(教程文件範例的 `type: gym_manipulator` 與 `task / fps` 在 env 層級已過期,本範本已修正)
-- [x] **`configs/README_so101.md`** 註明每個欄位該填什麼、用什麼指令量
+- [x] **`configs/env_config_so101.json`** 寫好(新版嵌套 schema、gamepad teleop),draccus 解析通過 — 全 schema 對得上 dataclass(教程文件範例的 `type: gym_manipulator` 與 `task / fps` 在 env 層級已過期,本範本已修正)
+- [x] **`configs/env_config_so101_leader.json`** + 自製 **`so101_leader_hil`** teleop class(`src/lerobot/teleoperators/so_leader_hil/`)— 補上 upstream 沒接通的 leader+keyboard HIL-SERL 流程(leader 帶 follower、鍵盤標 success/fail/intervention)。draccus 解析、factory 實例化、action_features 全部驗證通過(待硬體實測 leader 連線與 pynput 鍵盤)
+- [x] **`configs/README_so101.md`** 註明每個欄位該填什麼、用什麼指令量,以及 gamepad ↔ leader+keyboard 的選擇對照
 
 ## 接到 SO101 才能做的事(在公司 PC)
 
@@ -158,11 +159,23 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
    - 把 `Max ee position` / `Min ee position` 三個浮點數填回 `configs/env_config_so101.json` 的 `inverse_kinematics.end_effector_bounds.max` / `.min`
    - **小盒子比大盒子好**(訓練快很多);包足任務區域後留 1–2 cm 餘裕、`z` 下界 ≥ 桌面 + 1 cm 防撞桌
    - 範例對比:目前佔位符是 `±1.0 m` 立方體(完全沒約束),教程 SO100 範例是 `~8 × 28 × 7 cm` 小盒,差超過 100 倍,請務必縮到任務範圍
-5. **錄 demonstrations**:
+5. **錄 demonstrations**:選一種 teleop 開跑
+
+   **A. Gamepad mode**(預設,穩定):
    ```bash
    cd ~/lerobot
    uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101.json
    ```
+   按鈕對映:Y/△ = success(reward=1)、A/× = failure(reward=0)、X/□ = rerecord、RB(按住)= intervention、LT/RT-area = gripper open/close
+
+   **B. Leader + Keyboard mode**(需要 leader 手臂):
+   ```bash
+   cd ~/lerobot
+   uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_leader.json
+   ```
+   鍵盤對映:`s` = success、`esc` = failure、`r` = rerecord、`space` = toggle intervention。動作來自 leader(透過 FK 轉成 EE-delta)。注意 `end_effector_step_sizes` 在 teleop 區段跟 `processor.inverse_kinematics` 區段必須相同,否則人控 scale 會跟 policy 對不起來。詳見 `configs/README_so101.md`。
+
+   通用流程(兩種 mode 共通):
    - 預期 ≥15 個 episode,每集 5–10 秒
    - 完成後跑 `crop_dataset_roi.py` 找 ROI,填回 `image_preprocessing.crop_params_dict`
 6. **(選)訓練 reward classifier** — 改 `mode: "record"` + `terminate_on_success: false`,再錄一份;然後 `lerobot-train` 訓練,把 path 填回 `processor.reward_classifier.pretrained_path`
