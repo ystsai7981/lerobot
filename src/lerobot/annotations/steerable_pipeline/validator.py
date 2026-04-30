@@ -43,6 +43,8 @@ from lerobot.datasets.language import (
     LANGUAGE_EVENTS,
     LANGUAGE_PERSISTENT,
     column_for_style,
+    is_view_dependent_style,
+    validate_camera_field,
 )
 
 from .reader import EpisodeRecord
@@ -98,6 +100,11 @@ class StagingValidator:
     """Walks the staging tree and produces a :class:`ValidationReport`."""
 
     timestamp_atol: float = 0.0  # exact-match by default
+    dataset_camera_keys: tuple[str, ...] | None = None
+    """Known ``observation.images.*`` keys on the dataset. When set, the
+    validator additionally enforces that every view-dependent row's
+    ``camera`` field references one of these keys. Pass ``None`` (default)
+    to skip that cross-check (e.g. in unit tests with no real dataset)."""
 
     def validate(
         self,
@@ -130,6 +137,9 @@ class StagingValidator:
         persistent: list[dict[str, Any]] = []
         for row in all_rows:
             self._check_column_routing(row, report, record.episode_index)
+            self._check_camera_field(
+                row, report, record.episode_index, self.dataset_camera_keys
+            )
             if column_for_style(row.get("style")) == LANGUAGE_PERSISTENT:
                 persistent.append(row)
             else:
@@ -141,6 +151,59 @@ class StagingValidator:
         self._check_speech_interjection_pairs(events, report, record.episode_index)
         self._check_plan_memory_consistency(persistent, events, report, record.episode_index)
         self._check_vqa_json(events, report, record.episode_index)
+        self._check_vqa_uniqueness_per_frame_camera(events, report, record.episode_index)
+
+    def _check_camera_field(
+        self,
+        row: dict[str, Any],
+        report: ValidationReport,
+        episode_index: int,
+        dataset_camera_keys: Sequence[str] | None,
+    ) -> None:
+        """Enforce the camera invariant + that the key matches the dataset's cameras."""
+        style = row.get("style")
+        camera = row.get("camera")
+        try:
+            validate_camera_field(style, camera)
+        except ValueError as exc:
+            report.add_error(
+                f"ep={episode_index} module={row.get('_module')}: {exc}"
+            )
+            return
+        if (
+            is_view_dependent_style(style)
+            and dataset_camera_keys
+            and camera not in dataset_camera_keys
+        ):
+            report.add_error(
+                f"ep={episode_index} module={row.get('_module')}: camera {camera!r} on style "
+                f"{style!r} is not one of the dataset's video keys {sorted(dataset_camera_keys)!r}"
+            )
+
+    def _check_vqa_uniqueness_per_frame_camera(
+        self,
+        events: Iterable[dict[str, Any]],
+        report: ValidationReport,
+        episode_index: int,
+    ) -> None:
+        """Ensure at most one (vqa, user) and one (vqa, assistant) per (t, camera)."""
+        counts: dict[tuple[float, str, str], int] = {}
+        for row in events:
+            if row.get("style") != "vqa":
+                continue
+            ts = row.get("timestamp")
+            camera = row.get("camera")
+            role = row.get("role")
+            if ts is None or camera is None or role is None:
+                continue  # other validators flag these
+            key = (float(ts), str(camera), str(role))
+            counts[key] = counts.get(key, 0) + 1
+        for (ts, camera, role), n in counts.items():
+            if n > 1:
+                report.add_error(
+                    f"ep={episode_index}: {n} duplicate vqa rows at t={ts} "
+                    f"camera={camera!r} role={role!r}; expected at most one per (t, camera, role)"
+                )
 
     def _check_column_routing(
         self,

@@ -72,7 +72,9 @@ def annotate(cfg: AnnotationPipelineConfig) -> None:
     )
     module_3 = GeneralVqaModule(vlm=vlm, config=cfg.module_3, seed=cfg.seed, frame_provider=frame_provider)
     writer = LanguageColumnsWriter()
-    validator = StagingValidator()
+    validator = StagingValidator(
+        dataset_camera_keys=tuple(getattr(frame_provider, "camera_keys", []) or []) or None,
+    )
 
     executor = Executor(
         config=cfg,

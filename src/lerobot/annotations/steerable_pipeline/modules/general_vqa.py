@@ -16,8 +16,15 @@
 """Module 3: general VQA at a timed cadence.
 
 Anchors ``K`` (question, answer) pairs to ``K`` consecutive frames per
-emission so each frame gets at most one ``(vqa, user)`` and one
-``(vqa, assistant)`` pair — keeps the resolver contract scalar.
+emission. For datasets with multiple cameras, every emission tick produces
+one ``(vqa, user)`` + ``(vqa, assistant)`` pair *per camera*: each pair is
+generated against that camera's frame and stamped with the matching
+``camera`` field on the emitted rows. The resolver disambiguates via
+``camera=...``; recipes that consume VQA do so through one sub-recipe
+per camera (see ``recipes/pi05_hirobot.yaml``).
+
+Within a single (frame, camera) we still emit at most one ``(vqa, user)``
+and one ``(vqa, assistant)`` row, so the resolver contract stays scalar.
 
 Question types covered (per the plan's Module 3 table): bbox, keypoint,
 count, attribute, spatial. The assistant's ``content`` is a JSON string
@@ -98,23 +105,37 @@ class GeneralVqaModule:
         anchor_idx = _emission_anchor_indices(
             record.frame_timestamps, self.config.vqa_emission_hz, self.config.K
         )
-        # Build all messages first, then issue them as a single batched
-        # generate_json call so the client can fan them out concurrently.
-        per_call: list[tuple[float, str, list[dict[str, Any]]]] = []
+        cameras = self._target_cameras()
+        if not cameras:
+            # No camera available — keep behaviour parity with previous
+            # text-only stub: emit nothing rather than producing untagged
+            # rows that would fail validation.
+            staging.write("module_3", [])
+            return
+
+        # Build all messages first (one per (frame, camera)), then issue them
+        # as a single batched generate_json call so the client can fan them
+        # out concurrently.
+        per_call: list[tuple[float, str, str, list[dict[str, Any]]]] = []
         for idx in anchor_idx:
             ts = float(record.frame_timestamps[idx])
             qtype = rng.choice(self.config.question_types)
-            messages = self._build_messages(record, qtype, ts)
-            per_call.append((ts, qtype, messages))
+            for camera in cameras:
+                messages = self._build_messages(record, qtype, ts, camera)
+                # Skip cameras that decoded to zero frames at this ts: no point
+                # asking the VLM to ground a bbox without an image.
+                if not _has_image_block(messages):
+                    continue
+                per_call.append((ts, camera, qtype, messages))
 
         if not per_call:
             staging.write("module_3", [])
             return
 
-        results = self.vlm.generate_json([m for _, _, m in per_call])
+        results = self.vlm.generate_json([m for _, _, _, m in per_call])
 
         rows: list[dict[str, Any]] = []
-        for (ts, _qtype, _messages), result in zip(per_call, results):
+        for (ts, camera, _qtype, _messages), result in zip(per_call, results):
             qa = self._postprocess(result)
             if qa is None:
                 continue
@@ -125,6 +146,7 @@ class GeneralVqaModule:
                     "content": question,
                     "style": "vqa",
                     "timestamp": ts,
+                    "camera": camera,
                     "tool_calls": None,
                 }
             )
@@ -134,19 +156,35 @@ class GeneralVqaModule:
                     "content": json.dumps(answer, sort_keys=True),
                     "style": "vqa",
                     "timestamp": ts,
+                    "camera": camera,
                     "tool_calls": None,
                 }
             )
         staging.write("module_3", rows)
 
+    def _target_cameras(self) -> list[str]:
+        """Return the cameras Module 3 should iterate per emission tick.
+
+        Defaults to every camera the provider exposes. Datasets with no
+        cameras (or test/null providers) yield an empty list, which makes
+        ``run_episode`` a no-op.
+        """
+        return list(getattr(self.frame_provider, "camera_keys", []) or [])
+
     def _build_messages(
-        self, record: EpisodeRecord, question_type: str, frame_timestamp: float
+        self,
+        record: EpisodeRecord,
+        question_type: str,
+        frame_timestamp: float,
+        camera_key: str,
     ) -> list[dict[str, Any]]:
         prompt = load_prompt("module_3_vqa").format(
             episode_task=record.episode_task,
             question_type=question_type,
         )
-        images = self.frame_provider.frames_at(record, [frame_timestamp])
+        images = self.frame_provider.frames_at(
+            record, [frame_timestamp], camera_key=camera_key
+        )
         content = [*to_image_blocks(images), {"type": "text", "text": prompt}]
         return [{"role": "user", "content": content}]
 
@@ -166,8 +204,24 @@ class GeneralVqaModule:
         return question.strip(), answer
 
     def _generate_one(
-        self, record: EpisodeRecord, question_type: str, frame_timestamp: float
+        self,
+        record: EpisodeRecord,
+        question_type: str,
+        frame_timestamp: float,
+        camera_key: str,
     ) -> tuple[str, dict[str, Any]] | None:
-        messages = self._build_messages(record, question_type, frame_timestamp)
+        messages = self._build_messages(record, question_type, frame_timestamp, camera_key)
         result = self.vlm.generate_json([messages])[0]
         return self._postprocess(result)
+
+
+def _has_image_block(messages: list[dict[str, Any]]) -> bool:
+    """Return True if any user content block is a populated image block."""
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "image":
+                return True
+    return False

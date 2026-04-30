@@ -55,6 +55,7 @@ from lerobot.datasets.language import (
     LANGUAGE_PERSISTENT,
     PERSISTENT_STYLES,
     column_for_style,
+    validate_camera_field,
 )
 
 from .reader import EpisodeRecord
@@ -88,7 +89,11 @@ def _row_persistent_sort_key(row: dict[str, Any]) -> tuple:
 
 def _row_event_sort_key(row: dict[str, Any]) -> tuple:
     # events are bucketed per-frame, but within a frame we still want determinism
-    return (row.get("style") or "", row.get("role") or "")
+    return (
+        row.get("style") or "",
+        row.get("role") or "",
+        row.get("camera") or "",
+    )
 
 
 def _normalize_persistent_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -101,11 +106,14 @@ def _normalize_persistent_row(row: dict[str, Any]) -> dict[str, Any]:
         )
     if "timestamp" not in row:
         raise ValueError(f"persistent row missing timestamp: {row!r}")
+    camera = row.get("camera")
+    validate_camera_field(style, camera)
     return {
         "role": str(row["role"]),
         "content": None if row.get("content") is None else str(row["content"]),
         "style": style,
         "timestamp": float(row["timestamp"]),
+        "camera": None if camera is None else str(camera),
         "tool_calls": _normalize_tool_calls(row.get("tool_calls")),
     }
 
@@ -119,10 +127,13 @@ def _normalize_event_row(row: dict[str, Any]) -> dict[str, Any]:
         )
     if column_for_style(style) != LANGUAGE_EVENTS:
         raise ValueError(f"event row with style {style!r} would not route to language_events")
+    camera = row.get("camera")
+    validate_camera_field(style, camera)
     return {
         "role": str(row["role"]),
         "content": None if row.get("content") is None else str(row["content"]),
         "style": style,
+        "camera": None if camera is None else str(camera),
         "tool_calls": _normalize_tool_calls(row.get("tool_calls")),
     }
 
@@ -311,6 +322,7 @@ def speech_atom(timestamp: float, text: str) -> dict[str, Any]:
         "content": None,
         "style": None,
         "timestamp": float(timestamp),
+        "camera": None,
         "tool_calls": [
             {
                 "type": "function",
