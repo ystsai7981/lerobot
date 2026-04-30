@@ -62,8 +62,23 @@ class Module2Config:
     """Module 2 hyperparameters: interjections + paired speech."""
 
     enabled: bool = True
-    max_interjections_per_episode: int = 1
+    max_interjections_per_episode: int = 3
+    """Number of mid-episode interjections to generate per episode. Each
+    creates a paired ``(interjection, speech)`` event row plus triggers a
+    ``plan`` refresh at the same timestamp via Module 1. Bumped from the
+    original ``1`` after qwen36moe-10 showed plan/interjection coverage
+    was too sparse for Hi Robot-style training."""
     interjection_min_t: float = 2.0
+    interjection_window_seconds: float = 2.0
+    """How many seconds of video to attach to the interjection prompt as
+    visual context. Without this the VLM only sees a single frozen frame
+    and writes generic interjections that aren't grounded in the actual
+    motion happening at the chosen timestamp."""
+    interjection_window_frames: int = 4
+    """How many frames to sample over ``interjection_window_seconds``.
+    Default 4 ⇒ ~0.5 fps over the leading 2 seconds — enough for the
+    model to read the ongoing motion, cheap enough to keep prompt size
+    bounded for the 32k context."""
 
 
 @dataclass

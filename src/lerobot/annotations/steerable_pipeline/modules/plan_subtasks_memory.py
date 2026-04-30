@@ -121,14 +121,37 @@ class PlanSubtasksMemoryModule:
         record: EpisodeRecord,
         staging: EpisodeStaging,
         interjection_times: Sequence[float],
+        interjection_texts: Sequence[str] | None = None,
     ) -> None:
-        """Append additional ``plan`` rows at every interjection timestamp."""
+        """Append additional ``plan`` rows at every interjection timestamp.
+
+        Plans refresh ONLY on user interjections — subtask generation
+        runs ~1 Hz at inference, but plan re-emission is event-driven.
+        Now also forwards the interjection's own text into the prompt so
+        the refreshed plan can actually reflect the user's correction
+        (the previous version told the model "an interjection happened"
+        without telling it what the user said).
+        """
         existing = staging.read("module_1")
         spans = self._reconstruct_subtasks_from_rows(existing)
+        already_planned: set[float] = {
+            float(r["timestamp"]) for r in existing if r.get("style") == "plan"
+        }
         new_rows = list(existing)
-        for raw_t in interjection_times:
+
+        texts: list[str | None] = (
+            [None] * len(interjection_times)
+            if interjection_texts is None
+            else [str(t) if t else None for t in interjection_texts]
+        )
+        for raw_t, inter_text in zip(interjection_times, texts):
             t = _snap_to_frame(raw_t, record.frame_timestamps)
-            plan_text = self._generate_plan(record, spans, refresh_t=t)
+            if t in already_planned:
+                continue
+            already_planned.add(t)
+            plan_text = self._generate_plan(
+                record, spans, refresh_t=t, interjection=inter_text
+            )
             if plan_text is not None:
                 new_rows.append(
                     {
@@ -215,6 +238,7 @@ class PlanSubtasksMemoryModule:
         subtask_spans: Sequence[dict[str, Any]],
         *,
         refresh_t: float | None = None,
+        interjection: str | None = None,
     ) -> str | None:
         if not subtask_spans:
             return None
@@ -225,7 +249,33 @@ class PlanSubtasksMemoryModule:
             plan_max_steps=self.config.plan_max_steps,
         )
         if refresh_t is not None:
-            prompt += f"\n\n(This is a plan refresh after a user interjection at t={refresh_t:.2f}s.)\n"
+            # ``current_subtask`` is the span the refresh time falls into,
+            # so the model knows where in the demonstration the planner is
+            # standing when it re-emits.
+            current_subtask = ""
+            for span in subtask_spans:
+                if float(span["start"]) <= refresh_t and (
+                    "end" not in span or float(span["end"]) > refresh_t
+                ):
+                    current_subtask = span.get("text", "")
+                    break
+            if interjection:
+                prompt += (
+                    f"\n\n(Plan refresh at t={refresh_t:.2f}s after a user "
+                    f"interjection: {interjection!r}. Current subtask just "
+                    f"before the interjection: {current_subtask!r}. Update "
+                    f"the plan so it reflects the interjection — drop or "
+                    f"reorder steps as needed; do not just restate.)\n"
+                )
+            else:
+                # Refresh without an interjection text: still tell the model
+                # where in the episode the plan stands so the re-emission
+                # is grounded. Should be rare — plan refreshes are
+                # interjection-driven by design.
+                prompt += (
+                    f"\n\n(Plan refresh at t={refresh_t:.2f}s. Current "
+                    f"subtask: {current_subtask!r}.)\n"
+                )
         messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
         result = self.vlm.generate_json([messages])[0]
         if isinstance(result, dict) and isinstance(result.get("plan"), str):

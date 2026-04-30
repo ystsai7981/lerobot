@@ -110,7 +110,9 @@ class Executor:
 
         # Phase 1: Module 1 (plan + subtasks + memory)
         phases.append(self._run_module_phase("module_1", records, staging_dir, self.module_1))
-        # Phase 2: Module 2 (interjections + speech)
+        # Phase 2: Module 2 (interjections + speech). Module 2 reads
+        # Module 1's subtask rows from the same staging tree to ground
+        # the interjection prompt in the correct local subtask.
         phases.append(self._run_module_phase("module_2", records, staging_dir, self.module_2))
         # Phase 3: Module 1 plan-update pass at interjection timestamps.
         phases.append(self._run_plan_update_phase(records, staging_dir))
@@ -198,10 +200,16 @@ class Executor:
         processed = 0
         for record in records:
             staging = EpisodeStaging(staging_dir, record.episode_index)
-            interjection_times = [
-                row["timestamp"] for row in staging.read("module_2") if row.get("style") == "interjection"
+            interjection_rows = [
+                row
+                for row in staging.read("module_2")
+                if row.get("style") == "interjection"
             ]
+            interjection_times = [float(row["timestamp"]) for row in interjection_rows]
+            interjection_texts = [str(row.get("content") or "") for row in interjection_rows]
             if interjection_times:
-                self.module_1.run_plan_updates(record, staging, interjection_times)
+                self.module_1.run_plan_updates(
+                    record, staging, interjection_times, interjection_texts
+                )
                 processed += 1
         return PhaseResult(name="module_1_plan_update", episodes_processed=processed, episodes_skipped=0)
