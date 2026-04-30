@@ -389,11 +389,15 @@ class GripperPenaltyProcessorStep(ProcessorStep):
         if raw_joint_positions is None:
             return new_transition
 
-        current_gripper_pos = raw_joint_positions.get(GRIPPER_KEY, None)
+        current_gripper_pos = raw_joint_positions.get(f"{GRIPPER_KEY}.pos", None)
         if current_gripper_pos is None:
             return new_transition
 
-        # Gripper action is a PolicyAction at this stage
+        # During reset, the transition may not carry any action yet.
+        if action is None:
+            return new_transition
+
+        # Gripper action is expected as the last action dimension.
         gripper_action = action[-1].item()
         gripper_action_normalized = gripper_action / self.max_gripper_pos
 
