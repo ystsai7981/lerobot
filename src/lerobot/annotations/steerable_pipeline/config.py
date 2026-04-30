@@ -23,7 +23,7 @@ from typing import Any
 
 @dataclass
 class Module1Config:
-    """Module 1 hyperparameters: plan + subtasks + memory.
+    """Module 1 hyperparameters: plan + subtasks + memory + task augmentation.
 
     Subtask decomposition sees the **whole episode** as one Qwen-VL video
     block — no keyframe stride or count: the model handles temporal pooling
@@ -33,6 +33,33 @@ class Module1Config:
     """
 
     enabled: bool = True
+    n_task_rephrasings: int = 10
+    """Number of task rephrasings to generate at ``t=0`` as ``task_aug``
+    persistent rows (PR 1 ``CORE_STYLES``). The renderer's ``${task}``
+    binding rotates among them deterministically per ``sample_idx``,
+    realizing Xiao 2022 / CAST-style task-prompt diversity without
+    touching ``meta/tasks.parquet``. Set to 0 to disable."""
+    derive_task_from_video: str = "if_short"
+    """When to bypass the user-provided ``record.episode_task`` and
+    derive a fresh task description from the episode video alone:
+
+    - ``off``       never; always use the canonical task as the basis.
+    - ``if_short``  derive when the canonical task is empty, has fewer
+                    than ``derive_task_min_words`` words, or matches a
+                    placeholder string (``debug``, ``unnamed``, ``tbd``,
+                    ...). Default — fixes noisy / placeholder tasks
+                    without forcing derivation everywhere.
+    - ``always``    ignore the canonical task entirely; always derive
+                    from the video. Useful when the dataset's task
+                    labels are uniformly bad.
+
+    The video-derived task replaces the canonical task as the basis for
+    subtask decomposition, plan, memory, AND the ``task_aug`` rephrasings,
+    so every downstream annotation is grounded in what's actually visible.
+    ``meta/tasks.parquet`` is NOT modified — the Module-1-derived task
+    only lives in ``language_persistent`` rows."""
+    derive_task_min_words: int = 3
+    """Word-count threshold for ``derive_task_from_video=if_short``."""
     frames_per_second: float = 1.0
     """Sample one image-frame per ``1/fps`` seconds across the episode for
     Module 1's subtask-decomposition prompt. ``1.0`` = 1 fps. Capped by
