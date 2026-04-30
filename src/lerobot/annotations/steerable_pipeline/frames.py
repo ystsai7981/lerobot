@@ -208,7 +208,25 @@ class VideoFrameProvider:
                 backend=backend,
                 return_uint8=True,
             )
-        except Exception:
+        except Exception as exc:
+            # Log loudly the first time decoding fails so silent
+            # Module-3-no-op (every prompt skipped because frames_at returned
+            # []) is debuggable from the job log instead of post-hoc parquet
+            # inspection. Subsequent failures stay quiet.
+            if not getattr(self, "_warned_decode_fail", False):
+                import logging  # noqa: PLC0415
+
+                logging.getLogger(__name__).warning(
+                    "VideoFrameProvider._decode failed for episode=%s camera=%s "
+                    "video_path=%s backend=%s: %s",
+                    episode_index,
+                    camera_key,
+                    video_path,
+                    backend,
+                    exc,
+                    exc_info=True,
+                )
+                self._warned_decode_fail = True
             return []
         # frames: [N, C, H, W] uint8, RGB
         out: list[Any] = []
