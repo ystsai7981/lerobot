@@ -11,7 +11,9 @@
 | `env.robot.cameras.wrist.index_or_path` | `2` | 同上 |
 | `env.processor.inverse_kinematics.end_effector_bounds` | `±1.0`(很鬆) | `lerobot-find-joint-limits` 量真實工作範圍後填回(min/max 各 3 個浮點:x,y,z,單位 m) |
 | `env.processor.reset.fixed_reset_joint_positions` | `[0,0,0,90,0,5]` | 手臂上電後手動移到「初始姿勢」,讀關節度數填入 |
-| `dataset.repo_id` | `TODO_user/so101_pick_lift_cube` | 改成你的 HF 帳號 + 任務名 |
+| `dataset.repo_id` | `local/so101_pick_lift_cube` | 純本地用任意 `<owner>/<name>`(必須有斜線);要 push 上 HF 才填 `<你的HF帳號>/<任務名>` |
+| `dataset.root` | `data/so101_pick_lift_cube` | 資料存放位置;`data/` 已 gitignore,不會被 commit;設成 `null` 就改放 HF cache (`~/.cache/huggingface/lerobot/<repo_id>`) |
+| `dataset.push_to_hub` | `false` | `true` 才會在錄完後上傳 HF Hub |
 | `dataset.task` | `pick_and_lift` | 任務識別字串(自己取) |
 
 ## 範本選擇 (對應流程階段)

@@ -66,9 +66,9 @@
     }
   },
   "dataset": {
-    "repo_id": "TODO_user/so101_pick_lift_cube",
+    "repo_id": "local/so101_pick_lift_cube",
     "task": "pick_and_lift",
-    "root": null,
+    "root": "data/so101_pick_lift_cube",
     "num_episodes_to_record": 15,
     "replay_episode": null,
     "push_to_hub": false
