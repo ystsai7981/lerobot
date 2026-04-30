@@ -107,9 +107,20 @@ class GeneralVqaModule:
         )
         cameras = self._target_cameras()
         if not cameras:
-            # No camera available — keep behaviour parity with previous
-            # text-only stub: emit nothing rather than producing untagged
-            # rows that would fail validation.
+            # No camera available — emit nothing rather than producing
+            # untagged rows that would fail validation. Surface a loud one-
+            # time warning so this is never silently a no-op.
+            if not getattr(self, "_warned_no_camera", False):
+                import logging  # noqa: PLC0415
+
+                logging.getLogger(__name__).warning(
+                    "Module 3 (VQA) found no cameras on the frame provider — "
+                    "every episode will emit zero VQA rows. Check that the "
+                    "dataset declares observation.images.* features in "
+                    "meta/info.json; passing --vlm.camera_key=<key> at the "
+                    "CLI now also seeds the cameras list as a fallback."
+                )
+                self._warned_no_camera = True
             staging.write("module_3", [])
             return
 

@@ -126,7 +126,16 @@ class VideoFrameProvider:
         from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata  # noqa: PLC0415
 
         self._meta = LeRobotDatasetMetadata(repo_id="local", root=self.root)
-        keys = list(self._meta.video_keys or [])
+        # ``camera_keys`` covers both image- and video-stored cameras
+        # (``video_keys`` is video-only). Some datasets declare cameras with
+        # ``dtype=image``, which would otherwise look empty here and silently
+        # disable Module 3 even though the videos are there.
+        keys = list(getattr(self._meta, "camera_keys", None) or self._meta.video_keys or [])
+        # Last-resort fallback: if metadata didn't surface anything but the
+        # caller explicitly named a camera (``--vlm.camera_key=...``), trust
+        # them — the key is by definition known to exist on the dataset.
+        if not keys and self.camera_key:
+            keys = [self.camera_key]
         self._camera_keys = keys
         if self.camera_key is None:
             self.camera_key = keys[0] if keys else None
