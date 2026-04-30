@@ -58,10 +58,13 @@ def test_style_registry_routes_columns():
 
 
 def test_view_dependent_styles():
-    assert {"vqa", "motion", "trace"} == VIEW_DEPENDENT_STYLES
+    # motion lives in PERSISTENT_STYLES and is described in robot-frame
+    # (joint / Cartesian) terms, so it is NOT view-dependent. Only vqa
+    # (event) and trace (event, pixel-trajectory) carry a camera tag.
+    assert {"vqa", "trace"} == VIEW_DEPENDENT_STYLES
     assert is_view_dependent_style("vqa")
-    assert is_view_dependent_style("motion")
     assert is_view_dependent_style("trace")
+    assert not is_view_dependent_style("motion")
     assert not is_view_dependent_style("subtask")
     assert not is_view_dependent_style("plan")
     assert not is_view_dependent_style("interjection")
@@ -70,22 +73,24 @@ def test_view_dependent_styles():
 
 def test_validate_camera_field_requires_camera_for_view_dependent_styles():
     validate_camera_field("vqa", "observation.images.top")
-    validate_camera_field("motion", "observation.images.wrist")
     validate_camera_field("trace", "observation.images.front")
     with pytest.raises(ValueError, match="view-dependent"):
         validate_camera_field("vqa", None)
     with pytest.raises(ValueError, match="view-dependent"):
-        validate_camera_field("motion", "")
+        validate_camera_field("trace", "")
 
 
 def test_validate_camera_field_rejects_camera_on_non_view_dependent_styles():
     validate_camera_field("subtask", None)
     validate_camera_field("plan", None)
     validate_camera_field("memory", None)
+    validate_camera_field("motion", None)
     validate_camera_field("interjection", None)
     validate_camera_field(None, None)
     with pytest.raises(ValueError, match="must have camera=None"):
         validate_camera_field("subtask", "observation.images.top")
+    with pytest.raises(ValueError, match="must have camera=None"):
+        validate_camera_field("motion", "observation.images.top")
     with pytest.raises(ValueError, match="must have camera=None"):
         validate_camera_field("interjection", "observation.images.top")
     with pytest.raises(ValueError, match="must have camera=None"):

@@ -36,8 +36,15 @@ EVENT_ONLY_STYLES = {"interjection", "vqa", "trace"}
 
 # Styles whose ``content`` is grounded in a specific camera view. Rows of these
 # styles MUST carry a non-null ``camera`` referencing an ``observation.images.*``
-# feature key. Rows of every other style MUST have ``camera=None``.
-VIEW_DEPENDENT_STYLES = {"vqa", "motion", "trace"}
+# feature key. Rows of every other style MUST have ``camera=None``. ``motion``
+# is intentionally NOT in this set: motion primitives are described in
+# robot-frame (joint / Cartesian) terms, not pixel space, so they are
+# camera-agnostic. ``trace`` is the pixel-trajectory event style and IS
+# view-dependent. The ``camera`` field nevertheless lives on
+# ``PERSISTENT_ROW_FIELDS`` too so the schema, validator, and resolver
+# behave symmetrically across the two columns; persistent rows simply
+# always have ``camera=None`` in practice today.
+VIEW_DEPENDENT_STYLES = {"vqa", "trace"}
 
 LanguageColumn = Literal["language_persistent", "language_events"]
 
