@@ -24,8 +24,8 @@ import pyarrow as pa
 LANGUAGE_PERSISTENT = "language_persistent"
 LANGUAGE_EVENTS = "language_events"
 LANGUAGE_COLUMNS = (LANGUAGE_PERSISTENT, LANGUAGE_EVENTS)
-PERSISTENT_ROW_FIELDS = ("role", "content", "style", "timestamp", "tool_calls")
-EVENT_ROW_FIELDS = ("role", "content", "style", "tool_calls")
+PERSISTENT_ROW_FIELDS = ("role", "content", "style", "timestamp", "camera", "tool_calls")
+EVENT_ROW_FIELDS = ("role", "content", "style", "camera", "tool_calls")
 
 CORE_STYLES = {"subtask", "plan", "memory", "motion", "interjection", "vqa", "trace"}
 EXTENDED_STYLES = set()
@@ -33,6 +33,11 @@ STYLE_REGISTRY = CORE_STYLES | EXTENDED_STYLES
 
 PERSISTENT_STYLES = {"subtask", "plan", "memory", "motion"}
 EVENT_ONLY_STYLES = {"interjection", "vqa", "trace"}
+
+# Styles whose ``content`` is grounded in a specific camera view. Rows of these
+# styles MUST carry a non-null ``camera`` referencing an ``observation.images.*``
+# feature key. Rows of every other style MUST have ``camera=None``.
+VIEW_DEPENDENT_STYLES = {"vqa", "motion", "trace"}
 
 LanguageColumn = Literal["language_persistent", "language_events"]
 
@@ -59,6 +64,7 @@ def language_persistent_row_arrow_type() -> pa.StructType:
             pa.field("content", pa.string(), nullable=True),
             pa.field("style", pa.string(), nullable=True),
             pa.field("timestamp", pa.float64(), nullable=False),
+            pa.field("camera", pa.string(), nullable=True),
             pa.field("tool_calls", pa.list_(_json_arrow_type()), nullable=True),
         ]
     )
@@ -75,6 +81,7 @@ def language_event_row_arrow_type() -> pa.StructType:
             pa.field("role", pa.string(), nullable=False),
             pa.field("content", pa.string(), nullable=True),
             pa.field("style", pa.string(), nullable=True),
+            pa.field("camera", pa.string(), nullable=True),
             pa.field("tool_calls", pa.list_(_json_arrow_type()), nullable=True),
         ]
     )
@@ -97,6 +104,7 @@ def language_persistent_row_feature() -> dict[str, object]:
         "content": datasets.Value("string"),
         "style": datasets.Value("string"),
         "timestamp": datasets.Value("float64"),
+        "camera": datasets.Value("string"),
         "tool_calls": datasets.List(_json_feature()),
     }
 
@@ -107,6 +115,7 @@ def language_event_row_feature() -> dict[str, object]:
         "role": datasets.Value("string"),
         "content": datasets.Value("string"),
         "style": datasets.Value("string"),
+        "camera": datasets.Value("string"),
         "tool_calls": datasets.List(_json_feature()),
     }
 
@@ -132,6 +141,30 @@ def language_feature_info() -> dict[str, dict]:
 def is_language_column(key: str) -> bool:
     """Return ``True`` if ``key`` is one of the dataset's language column names."""
     return key in LANGUAGE_COLUMNS
+
+
+def is_view_dependent_style(style: str | None) -> bool:
+    """Return ``True`` if rows of ``style`` must be tagged with a ``camera`` key."""
+    return style in VIEW_DEPENDENT_STYLES
+
+
+def validate_camera_field(style: str | None, camera: str | None) -> None:
+    """Enforce the ``camera`` invariant: required iff ``style`` is view-dependent.
+
+    Raises ``ValueError`` if a view-dependent style is missing ``camera`` or if
+    a non-view-dependent style carries one. Pipeline writers and the validator
+    should call this on every emitted row.
+    """
+    if is_view_dependent_style(style):
+        if not camera:
+            raise ValueError(
+                f"Rows of view-dependent style {style!r} require a non-empty 'camera' "
+                f"field referencing an 'observation.images.*' feature key."
+            )
+    elif camera is not None:
+        raise ValueError(
+            f"Rows of style {style!r} must have camera=None; got camera={camera!r}."
+        )
 
 
 def column_for_style(style: str | None) -> LanguageColumn:

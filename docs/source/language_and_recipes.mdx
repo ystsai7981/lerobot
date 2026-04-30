@@ -6,15 +6,23 @@ The two optional columns are:
 - `language_persistent`: a list of rows broadcast across every frame in an episode for state that remains active, such as `subtask`, `plan`, and `memory`.
 - `language_events`: a list of rows only on the exact frame where an event was emitted, such as `interjection`, `vqa`, and speech tool calls.
 
-Both columns share the same row shape:
+Both columns share the same row shape (event rows omit `timestamp` because the
+frame the row sits on already provides it):
 
 ```text
 role: string
 content: string | null
 style: string | null
-timestamp: float64
+timestamp: float64        # persistent rows only
+camera: string | null     # observation.images.* feature key, view-dependent rows only
 tool_calls: list[Json] | null
 ```
+
+The `camera` field tags rows whose `content` is grounded in a specific camera
+view. Rows of view-dependent styles (`vqa`, and the reserved `motion` /
+`trace`) MUST set `camera` to the matching `observation.images.*` feature key.
+Rows of every other style MUST leave `camera` as `null`. Pipeline writers and
+the validator enforce this via `validate_camera_field(style, camera)`.
 
 `meta/tasks.parquet` remains the canonical source for the task. The special `${task}` recipe binding always reads that task string and does not depend on language annotations.
 
@@ -39,10 +47,36 @@ Persistent styles are active after emission until replaced:
 Event styles only exist on their exact timestamp:
 
 - `emitted_at(t, style=interjection)`
-- `emitted_at(t, style=vqa, role=user)`
+- `emitted_at(t, style=vqa, role=user, camera=observation.images.top)`
 - `emitted_at(t, role=assistant, tool_name=say)`
 
 Exact event matching has no tolerance window, so writers must stamp event rows with frame timestamps from the parquet data.
+
+## View-dependent resolution
+
+For view-dependent styles (`vqa`, `motion`, `trace`), the resolver gains a
+`camera=` filter parallel to `role=` and `tool_name=`. Datasets with multiple
+cameras typically emit one (`vqa`, `user`) + (`vqa`, `assistant`) pair per
+camera at the same timestamp; without `camera=`, those resolvers see two
+matches and raise an ambiguity error. Recipes consume each camera through its
+own binding plus a matching image block, e.g.
+
+```yaml
+ask_vqa_top:
+  bindings:
+    vqa_query: "emitted_at(t, style=vqa, role=user, camera=observation.images.top)"
+    vqa: "emitted_at(t, style=vqa, role=assistant, camera=observation.images.top)"
+  messages:
+    - role: user
+      stream: high_level
+      if_present: vqa_query
+      content:
+        - { type: image, feature: observation.images.top }
+        - { type: text, text: "${vqa_query}" }
+    - { role: assistant, content: "${vqa}", stream: high_level, target: true, if_present: vqa }
+```
+
+Add one such sub-recipe per camera the dataset records.
 
 ## Recipe anatomy
 

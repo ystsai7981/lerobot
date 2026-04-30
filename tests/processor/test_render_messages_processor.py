@@ -38,6 +38,7 @@ def test_render_messages_step_renders_and_drops_raw_language():
                     "content": "reach carefully",
                     "style": "subtask",
                     "timestamp": 0.0,
+                    "camera": None,
                     "tool_calls": None,
                 }
             ],

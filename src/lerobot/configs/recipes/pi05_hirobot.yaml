@@ -40,8 +40,35 @@ blend:
       - {role: user, content: "${task}\nPlan: ${plan}\nMemory: ${memory}", stream: high_level}
       - {role: assistant, content: "${subtask}", stream: low_level, target: true}
 
-  ask_vqa:
-    weight: 0.20
+  # VQA is view-dependent: bbox / keypoint / count answers only make sense for
+  # the camera they were grounded against. Each camera gets its own sub-recipe
+  # so the resolver can disambiguate via `camera=...` and the user-turn carries
+  # the matching image block. Adjust the camera keys (and add more sub-recipes)
+  # to match the cameras present on your dataset.
+  ask_vqa_top:
+    weight: 0.10
+    bindings:
+      vqa_query: "emitted_at(t, style=vqa, role=user, camera=observation.images.top)"
+      vqa: "emitted_at(t, style=vqa, role=assistant, camera=observation.images.top)"
     messages:
-      - {role: user, content: "${vqa_query}", stream: high_level, if_present: vqa_query}
+      - role: user
+        stream: high_level
+        if_present: vqa_query
+        content:
+          - {type: image, feature: observation.images.top}
+          - {type: text, text: "${vqa_query}"}
+      - {role: assistant, content: "${vqa}", stream: high_level, target: true, if_present: vqa}
+
+  ask_vqa_wrist:
+    weight: 0.10
+    bindings:
+      vqa_query: "emitted_at(t, style=vqa, role=user, camera=observation.images.wrist)"
+      vqa: "emitted_at(t, style=vqa, role=assistant, camera=observation.images.wrist)"
+    messages:
+      - role: user
+        stream: high_level
+        if_present: vqa_query
+        content:
+          - {type: image, feature: observation.images.wrist}
+          - {type: text, text: "${vqa_query}"}
       - {role: assistant, content: "${vqa}", stream: high_level, target: true, if_present: vqa}

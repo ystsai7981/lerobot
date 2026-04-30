@@ -13,10 +13,13 @@ from lerobot.datasets.language import (
     LANGUAGE_PERSISTENT,
     PERSISTENT_STYLES,
     STYLE_REGISTRY,
+    VIEW_DEPENDENT_STYLES,
     column_for_style,
+    is_view_dependent_style,
     language_events_arrow_type,
     language_feature_info,
     language_persistent_arrow_type,
+    validate_camera_field,
 )
 from lerobot.datasets.utils import DEFAULT_DATA_PATH
 
@@ -26,10 +29,17 @@ def test_language_arrow_schema_has_expected_fields():
     event_row_type = language_events_arrow_type().value_type
 
     assert isinstance(persistent_row_type, pa.StructType)
-    assert persistent_row_type.names == ["role", "content", "style", "timestamp", "tool_calls"]
+    assert persistent_row_type.names == [
+        "role",
+        "content",
+        "style",
+        "timestamp",
+        "camera",
+        "tool_calls",
+    ]
 
     assert isinstance(event_row_type, pa.StructType)
-    assert event_row_type.names == ["role", "content", "style", "tool_calls"]
+    assert event_row_type.names == ["role", "content", "style", "camera", "tool_calls"]
 
 
 def test_style_registry_routes_columns():
@@ -45,6 +55,41 @@ def test_style_registry_routes_columns():
     assert column_for_style("vqa") == LANGUAGE_EVENTS
     assert column_for_style("trace") == LANGUAGE_EVENTS
     assert column_for_style(None) == LANGUAGE_EVENTS
+
+
+def test_view_dependent_styles():
+    assert {"vqa", "motion", "trace"} == VIEW_DEPENDENT_STYLES
+    assert is_view_dependent_style("vqa")
+    assert is_view_dependent_style("motion")
+    assert is_view_dependent_style("trace")
+    assert not is_view_dependent_style("subtask")
+    assert not is_view_dependent_style("plan")
+    assert not is_view_dependent_style("interjection")
+    assert not is_view_dependent_style(None)
+
+
+def test_validate_camera_field_requires_camera_for_view_dependent_styles():
+    validate_camera_field("vqa", "observation.images.top")
+    validate_camera_field("motion", "observation.images.wrist")
+    validate_camera_field("trace", "observation.images.front")
+    with pytest.raises(ValueError, match="view-dependent"):
+        validate_camera_field("vqa", None)
+    with pytest.raises(ValueError, match="view-dependent"):
+        validate_camera_field("motion", "")
+
+
+def test_validate_camera_field_rejects_camera_on_non_view_dependent_styles():
+    validate_camera_field("subtask", None)
+    validate_camera_field("plan", None)
+    validate_camera_field("memory", None)
+    validate_camera_field("interjection", None)
+    validate_camera_field(None, None)
+    with pytest.raises(ValueError, match="must have camera=None"):
+        validate_camera_field("subtask", "observation.images.top")
+    with pytest.raises(ValueError, match="must have camera=None"):
+        validate_camera_field("interjection", "observation.images.top")
+    with pytest.raises(ValueError, match="must have camera=None"):
+        validate_camera_field(None, "observation.images.top")
 
 
 def test_unknown_style_rejected():
@@ -70,6 +115,7 @@ def test_lerobot_dataset_passes_language_columns_through(tmp_path, empty_lerobot
             "content": "reach for the cup",
             "style": "subtask",
             "timestamp": 0.0,
+            "camera": None,
             "tool_calls": None,
         }
     ]
@@ -77,6 +123,7 @@ def test_lerobot_dataset_passes_language_columns_through(tmp_path, empty_lerobot
         "role": "user",
         "content": "what is visible?",
         "style": "vqa",
+        "camera": "observation.images.top",
         "tool_calls": None,
     }
     data_path = root / DEFAULT_DATA_PATH.format(chunk_index=0, file_index=0)

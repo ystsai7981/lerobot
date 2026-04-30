@@ -46,18 +46,23 @@ def active_at(
     style: str | None = None,
     role: str | None = None,
     tool_name: str | None = None,
+    camera: str | None = None,
 ) -> LanguageRow | None:
     """Return the persistent row of ``style`` that is active at time ``t``.
 
     A persistent row is "active" at ``t`` when its own ``timestamp`` is the
-    most recent one ``<= t`` for the given ``style``/``role``/``tool_name``
-    selector. ``events`` is accepted for resolver-signature uniformity but is
-    not consulted: only persistent styles are valid here.
+    most recent one ``<= t`` for the given ``style``/``role``/``tool_name``/
+    ``camera`` selector. ``events`` is accepted for resolver-signature
+    uniformity but is not consulted: only persistent styles are valid here.
     """
     _validate_persistent_resolver("active_at", style)
-    matches = _matching_rows(persistent, style=style, role=role, tool_name=tool_name)
+    matches = _matching_rows(
+        persistent, style=style, role=role, tool_name=tool_name, camera=camera
+    )
     matches = [row for row in matches if _timestamp(row) <= t]
-    return _select_latest(matches, style=style, role=role, tool_name=tool_name)
+    return _select_latest(
+        matches, style=style, role=role, tool_name=tool_name, camera=camera
+    )
 
 
 def emitted_at(
@@ -68,26 +73,45 @@ def emitted_at(
     style: str | None = None,
     role: str | None = None,
     tool_name: str | None = None,
+    camera: str | None = None,
 ) -> LanguageRow | None:
     """Return the row of ``style`` emitted at exactly time ``t``.
 
     For persistent styles, this matches persistent rows whose own ``timestamp``
     equals ``t``. For event styles, the ``events`` list is assumed to come from
     the dataset row at frame ``t`` (event rows carry no timestamp of their own),
-    so all matching event rows are considered emitted at ``t``.
+    so all matching event rows are considered emitted at ``t``. ``camera``
+    filters by the row's ``camera`` field — required to disambiguate when
+    multiple view-dependent rows share ``(t, role)`` across cameras.
     """
     column = column_for_style(style)
     if column == LANGUAGE_PERSISTENT:
         matches = [
             row
-            for row in _matching_rows(persistent, style=style, role=role, tool_name=tool_name)
+            for row in _matching_rows(
+                persistent, style=style, role=role, tool_name=tool_name, camera=camera
+            )
             if _timestamp(row) == t
         ]
         return _select_one(
-            matches, style=style, role=role, tool_name=tool_name, sort_key=_persistent_sort_key
+            matches,
+            style=style,
+            role=role,
+            tool_name=tool_name,
+            camera=camera,
+            sort_key=_persistent_sort_key,
         )
-    matches = _matching_rows(events, style=style, role=role, tool_name=tool_name)
-    return _select_one(matches, style=style, role=role, tool_name=tool_name, sort_key=_event_sort_key)
+    matches = _matching_rows(
+        events, style=style, role=role, tool_name=tool_name, camera=camera
+    )
+    return _select_one(
+        matches,
+        style=style,
+        role=role,
+        tool_name=tool_name,
+        camera=camera,
+        sort_key=_event_sort_key,
+    )
 
 
 def nth_prev(
@@ -99,12 +123,14 @@ def nth_prev(
     offset: int = 1,
     role: str | None = None,
     tool_name: str | None = None,
+    camera: str | None = None,
 ) -> LanguageRow | None:
     """Return the persistent row that was active ``offset`` steps before ``t``.
 
     Walks back through chronologically sorted persistent rows of ``style``
-    (filtered by optional ``role``/``tool_name``) and returns the one ``offset``
-    positions before the row active at ``t``. Only valid for persistent styles.
+    (filtered by optional ``role``/``tool_name``/``camera``) and returns the
+    one ``offset`` positions before the row active at ``t``. Only valid for
+    persistent styles.
     """
     return _nth_relative(
         t,
@@ -113,6 +139,7 @@ def nth_prev(
         offset=-offset,
         role=role,
         tool_name=tool_name,
+        camera=camera,
         resolver_name="nth_prev",
     )
 
@@ -126,12 +153,14 @@ def nth_next(
     offset: int = 1,
     role: str | None = None,
     tool_name: str | None = None,
+    camera: str | None = None,
 ) -> LanguageRow | None:
     """Return the persistent row that becomes active ``offset`` steps after ``t``.
 
     Walks forward through chronologically sorted persistent rows of ``style``
-    (filtered by optional ``role``/``tool_name``) and returns the one ``offset``
-    positions after the row active at ``t``. Only valid for persistent styles.
+    (filtered by optional ``role``/``tool_name``/``camera``) and returns the
+    one ``offset`` positions after the row active at ``t``. Only valid for
+    persistent styles.
     """
     return _nth_relative(
         t,
@@ -140,6 +169,7 @@ def nth_next(
         offset=offset,
         role=role,
         tool_name=tool_name,
+        camera=camera,
         resolver_name="nth_next",
     )
 
@@ -376,6 +406,7 @@ def _nth_relative(
     offset: int,
     role: str | None,
     tool_name: str | None,
+    camera: str | None,
     resolver_name: str,
 ) -> LanguageRow | None:
     """Shared body for ``nth_prev`` / ``nth_next`` with signed ``offset``."""
@@ -384,7 +415,7 @@ def _nth_relative(
         raise ValueError(f"{resolver_name} offset must be non-zero.")
 
     rows = sorted(
-        _matching_rows(persistent, style=style, role=role, tool_name=tool_name),
+        _matching_rows(persistent, style=style, role=role, tool_name=tool_name, camera=camera),
         key=_persistent_sort_key,
     )
     if not rows:
@@ -420,14 +451,16 @@ def _matching_rows(
     style: str | None,
     role: str | None,
     tool_name: str | None,
+    camera: str | None,
 ) -> list[LanguageRow]:
-    """Return ``rows`` filtered by optional ``style``/``role``/``tool_name`` selectors."""
+    """Return ``rows`` filtered by optional ``style``/``role``/``tool_name``/``camera`` selectors."""
     return [
         row
         for row in rows
         if (style is None or row.get("style") == style)
         and (role is None or row.get("role") == role)
         and (tool_name is None or _row_has_tool_name(row, tool_name))
+        and (camera is None or row.get("camera") == camera)
     ]
 
 
@@ -437,6 +470,7 @@ def _select_latest(
     style: str | None,
     role: str | None,
     tool_name: str | None,
+    camera: str | None,
 ) -> LanguageRow | None:
     """Return the row tied for the latest ``timestamp`` (disambiguated by selectors)."""
     if not rows:
@@ -448,6 +482,7 @@ def _select_latest(
         style=style,
         role=role,
         tool_name=tool_name,
+        camera=camera,
         sort_key=_persistent_sort_key,
     )
 
@@ -458,14 +493,16 @@ def _select_one(
     style: str | None,
     role: str | None,
     tool_name: str | None,
+    camera: str | None,
     sort_key: Any,
 ) -> LanguageRow | None:
     """Return the single matching row, or raise if the selectors are ambiguous."""
     if not rows:
         return None
-    if len(rows) > 1 and role is None and tool_name is None:
+    if len(rows) > 1 and role is None and tool_name is None and camera is None:
         raise ValueError(
-            f"Ambiguous resolver for style={style!r}; add role=... or tool_name=... to disambiguate."
+            f"Ambiguous resolver for style={style!r}; add role=..., tool_name=..., "
+            f"or camera=... to disambiguate."
         )
     return sorted(rows, key=sort_key)[0]
 

@@ -26,6 +26,7 @@ def test_canonical_recipe_loads():
         "user_interjection_response",
         "high_level_subtask",
         "low_level_execution",
-        "ask_vqa",
+        "ask_vqa_top",
+        "ask_vqa_wrist",
     }
     assert sum(component.weight for component in recipe.blend.values()) == pytest.approx(0.96)
