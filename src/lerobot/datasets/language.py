@@ -27,11 +27,20 @@ LANGUAGE_COLUMNS = (LANGUAGE_PERSISTENT, LANGUAGE_EVENTS)
 PERSISTENT_ROW_FIELDS = ("role", "content", "style", "timestamp", "camera", "tool_calls")
 EVENT_ROW_FIELDS = ("role", "content", "style", "camera", "tool_calls")
 
-CORE_STYLES = {"subtask", "plan", "memory", "motion", "interjection", "vqa", "trace"}
+CORE_STYLES = {
+    "subtask",
+    "plan",
+    "memory",
+    "motion",
+    "interjection",
+    "vqa",
+    "trace",
+    "task_aug",
+}
 EXTENDED_STYLES = set()
 STYLE_REGISTRY = CORE_STYLES | EXTENDED_STYLES
 
-PERSISTENT_STYLES = {"subtask", "plan", "memory", "motion"}
+PERSISTENT_STYLES = {"subtask", "plan", "memory", "motion", "task_aug"}
 EVENT_ONLY_STYLES = {"interjection", "vqa", "trace"}
 
 # Styles whose ``content`` is grounded in a specific camera view. Rows of these

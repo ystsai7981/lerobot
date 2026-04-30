@@ -198,6 +198,7 @@ def render_sample(
         persistent=persistent_rows,
         events=event_rows,
         t=t,
+        sample_idx=sample_idx,
         task=task,
         dataset_ctx=dataset_ctx,
     )
@@ -232,21 +233,65 @@ def _resolve_bindings(
     persistent: Sequence[LanguageRow],
     events: Sequence[LanguageRow],
     t: float,
+    sample_idx: int,
     task: str | None,
     dataset_ctx: Any | None,
 ) -> dict[str, LanguageRow | str | None]:
     """Resolve every binding in ``recipe`` (plus ``task``) at time ``t``."""
-    bindings: dict[str, LanguageRow | str | None] = {"task": _resolve_task(task, dataset_ctx)}
+    bindings: dict[str, LanguageRow | str | None] = {
+        "task": _resolve_task(
+            task, dataset_ctx, persistent=persistent, sample_idx=sample_idx
+        ),
+    }
     specs = {**DEFAULT_BINDINGS, **(recipe.bindings or {})}
     for name, spec in specs.items():
         bindings[name] = _resolve_spec(spec, persistent=persistent, events=events, t=t)
     return bindings
 
 
-def _resolve_task(task: str | None, dataset_ctx: Any | None) -> str | None:
-    """Return ``task`` if set, otherwise look it up on ``dataset_ctx``."""
+def _resolve_task(
+    task: str | None,
+    dataset_ctx: Any | None,
+    *,
+    persistent: Sequence[LanguageRow] = (),
+    sample_idx: int = 0,
+) -> str | None:
+    """Return the task string for ``sample_idx``.
+
+    Resolution order:
+
+    1. Explicit ``task`` override (caller-supplied) wins.
+    2. If ``persistent`` contains rows of style ``task_aug`` (role=user),
+       deterministically pick one by ``sample_idx`` so each frame of an
+       episode rotates through the available rephrasings across an epoch.
+       This realizes Xiao 2022 / CAST-style task-prompt diversity without
+       changing ``meta/tasks.parquet`` and without forcing recipes to opt
+       in: ``${task}`` automatically picks a rephrasing when one exists,
+       and falls back to the canonical task otherwise. Recipes that want
+       the literal canonical task can override the binding.
+    3. Otherwise read the canonical task from ``dataset_ctx`` (which is
+       backed by ``meta/tasks.parquet``).
+    """
     if task is not None:
         return task
+
+    aug_rows = [
+        r
+        for r in persistent
+        if r.get("style") == "task_aug" and r.get("role") == "user"
+    ]
+    if aug_rows:
+        # Deterministic, blake2b-based pick keyed on sample_idx so the
+        # rotation is reproducible across runs (Python's built-in ``hash``
+        # is process-randomized).
+        digest = hashlib.blake2b(
+            f"task_aug:{sample_idx}".encode(), digest_size=8
+        ).digest()
+        idx = int.from_bytes(digest, "big") % len(aug_rows)
+        chosen = aug_rows[idx].get("content")
+        if chosen:
+            return str(chosen)
+
     if dataset_ctx is None:
         return None
     if isinstance(dataset_ctx, dict):

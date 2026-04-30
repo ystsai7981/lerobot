@@ -43,7 +43,7 @@ def test_language_arrow_schema_has_expected_fields():
 
 
 def test_style_registry_routes_columns():
-    assert {"subtask", "plan", "memory", "motion"} == PERSISTENT_STYLES
+    assert {"subtask", "plan", "memory", "motion", "task_aug"} == PERSISTENT_STYLES
     assert {"interjection", "vqa", "trace"} == EVENT_ONLY_STYLES
     assert PERSISTENT_STYLES | EVENT_ONLY_STYLES <= STYLE_REGISTRY
 
@@ -51,6 +51,7 @@ def test_style_registry_routes_columns():
     assert column_for_style("plan") == LANGUAGE_PERSISTENT
     assert column_for_style("memory") == LANGUAGE_PERSISTENT
     assert column_for_style("motion") == LANGUAGE_PERSISTENT
+    assert column_for_style("task_aug") == LANGUAGE_PERSISTENT
     assert column_for_style("interjection") == LANGUAGE_EVENTS
     assert column_for_style("vqa") == LANGUAGE_EVENTS
     assert column_for_style("trace") == LANGUAGE_EVENTS

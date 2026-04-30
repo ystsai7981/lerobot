@@ -289,6 +289,87 @@ def test_per_camera_blend_renders_both_views():
     assert rendered_wrist["messages"][1]["content"] == '{"count": 1}'
 
 
+def test_resolve_task_picks_rephrasing_deterministically_per_sample():
+    rephrasings = [
+        persistent_row("user", "tidy the kitchen", "task_aug", 0.0),
+        persistent_row("user", "please clean up the kitchen", "task_aug", 0.0),
+        persistent_row("user", "kitchen needs tidying", "task_aug", 0.0),
+        persistent_row("user", "make the kitchen clean", "task_aug", 0.0),
+    ]
+    recipe = TrainingRecipe(
+        messages=[
+            MessageTurn(role="user", content="${task}", stream="high_level"),
+            MessageTurn(role="assistant", content="ok", stream="high_level", target=True),
+        ]
+    )
+
+    # No explicit task override → resolver consults persistent rows.
+    seen: set[str] = set()
+    for sample_idx in range(64):
+        rendered = render_sample(
+            recipe=recipe,
+            persistent=rephrasings,
+            events=[],
+            t=0.0,
+            sample_idx=sample_idx,
+            dataset_ctx={"task": "canonical kitchen task"},
+        )
+        seen.add(rendered["messages"][0]["content"])
+    # Every rephrasing should be reachable across enough samples.
+    assert seen == {r["content"] for r in rephrasings}
+    # Same sample_idx → same pick (determinism).
+    a = render_sample(
+        recipe=recipe, persistent=rephrasings, events=[], t=0.0, sample_idx=42,
+        dataset_ctx={"task": "canonical"},
+    )
+    b = render_sample(
+        recipe=recipe, persistent=rephrasings, events=[], t=0.0, sample_idx=42,
+        dataset_ctx={"task": "canonical"},
+    )
+    assert a["messages"][0]["content"] == b["messages"][0]["content"]
+
+
+def test_resolve_task_falls_back_to_canonical_without_rephrasings():
+    recipe = TrainingRecipe(
+        messages=[
+            MessageTurn(role="user", content="${task}", stream="high_level"),
+            MessageTurn(role="assistant", content="ok", stream="high_level", target=True),
+        ]
+    )
+    rendered = render_sample(
+        recipe=recipe,
+        persistent=PERSISTENT,  # no task_aug rows
+        events=[],
+        t=0.0,
+        sample_idx=0,
+        dataset_ctx={"task": "clean the kitchen"},
+    )
+    assert rendered["messages"][0]["content"] == "clean the kitchen"
+
+
+def test_resolve_task_explicit_override_beats_rephrasings():
+    rephrasings = [
+        persistent_row("user", "rephrased one", "task_aug", 0.0),
+        persistent_row("user", "rephrased two", "task_aug", 0.0),
+    ]
+    recipe = TrainingRecipe(
+        messages=[
+            MessageTurn(role="user", content="${task}", stream="high_level"),
+            MessageTurn(role="assistant", content="ok", stream="high_level", target=True),
+        ]
+    )
+    rendered = render_sample(
+        recipe=recipe,
+        persistent=rephrasings,
+        events=[],
+        t=0.0,
+        sample_idx=0,
+        task="explicit override wins",
+        dataset_ctx={"task": "canonical"},
+    )
+    assert rendered["messages"][0]["content"] == "explicit override wins"
+
+
 def test_canonical_recipe_can_render_low_level_branch():
     recipe = TrainingRecipe.from_yaml(Path("src/lerobot/configs/recipes/pi05_hirobot.yaml"))
     low_level = TrainingRecipe(blend={"low": recipe.blend["low_level_execution"]})
