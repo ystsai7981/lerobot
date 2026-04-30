@@ -319,6 +319,28 @@ class LeRobotDatasetMetadata:
         return [key for key, ft in self.features.items() if ft["dtype"] in ["video", "image"]]
 
     @property
+    def tools(self) -> list[dict]:
+        """OpenAI-style tool schemas declared by this dataset.
+
+        Read from ``meta/info.json["tools"]``. Returns a copy, so callers
+        can mutate the result safely. Falls back to
+        :data:`lerobot.datasets.language.DEFAULT_TOOLS` (the canonical
+        ``say`` schema) when the dataset doesn't declare any — that way
+        unannotated datasets and chat-template consumers
+        (``apply_chat_template(messages, tools=meta.tools)``) keep
+        working out of the box.
+
+        Implementations live under :mod:`lerobot.tools` (one file per
+        tool); see ``docs/source/tools.mdx`` for the authoring guide.
+        """
+        from .language import DEFAULT_TOOLS  # noqa: PLC0415  (avoid circular import)
+
+        declared = self.info.get("tools")
+        if isinstance(declared, list) and declared:
+            return [dict(t) for t in declared]
+        return [dict(t) for t in DEFAULT_TOOLS]
+
+    @property
     def names(self) -> dict[str, list | dict]:
         """Names of the various dimensions of vector modalities."""
         return {key: ft["names"] for key, ft in self.features.items()}

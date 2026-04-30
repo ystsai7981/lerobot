@@ -33,6 +33,8 @@
     title: Using the Dataset Tools
   - local: language_and_recipes
     title: Language Columns and Recipes
+  - local: tools
+    title: Tools
   - local: streaming_video_encoding
     title: Streaming Video Encoding
   title: "Datasets"

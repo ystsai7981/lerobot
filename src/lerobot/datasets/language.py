@@ -183,6 +183,43 @@ def validate_camera_field(style: str | None, camera: str | None) -> None:
         )
 
 
+# --- Tool registry --------------------------------------------------------
+# Tools declared on a dataset live in ``meta/info.json["tools"]`` as a list
+# of OpenAI-style function schemas. The runtime / training stack reads them
+# through :class:`LeRobotDatasetMetadata.tools` (with these constants as
+# fallback when the dataset doesn't declare any). Implementations live
+# under :mod:`lerobot.tools` (one file per tool); see
+# ``docs/source/tools.mdx`` for the authoring guide.
+
+SAY_TOOL_SCHEMA: dict = {
+    "type": "function",
+    "function": {
+        "name": "say",
+        "description": "Speak a short utterance to the user via the TTS executor.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "The verbatim text to speak.",
+                }
+            },
+            "required": ["text"],
+        },
+    },
+}
+"""Canonical schema for the ``say`` tool emitted by the steerable
+annotation pipeline (PR 2 Module 2). Single source of truth — PR 2's
+writer, PR 3's runtime tool registry, and the dataset visualizer all
+import this constant rather than duplicating the dict."""
+
+DEFAULT_TOOLS: list[dict] = [SAY_TOOL_SCHEMA]
+"""Fallback tools list. Returned by ``LeRobotDatasetMetadata.tools``
+when ``meta/info.json["tools"]`` is unset, so unannotated datasets and
+chat-template consumers (``apply_chat_template(messages, tools=...)``)
+keep working out of the box."""
+
+
 def column_for_style(style: str | None) -> LanguageColumn:
     """Map a language style to the column where rows of that style are stored.
 
