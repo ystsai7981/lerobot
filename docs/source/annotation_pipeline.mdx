@@ -21,12 +21,19 @@ rewrites the data shards in place:
 | `vqa` (user / assistant pair)               | `language_events`     | Module 3 |
 
 The writer drops the legacy `subtask_index` column. It does **not** add a
-`tools` column to the parquet — the `say` tool's JSON schema is fixed and
-lives as a code constant (`SAY_TOOL_SCHEMA` / `DEFAULT_TOOLS` in
-`lerobot.annotations.steerable_pipeline.writer`), so the parquet stays
-small and PR 2 doesn't extend PR 1's schema. Chat-template consumers
-import the constant directly (e.g.
-`apply_chat_template(messages, tools=DEFAULT_TOOLS)`).
+`tools` column to the parquet — the tool catalog lives at
+`meta/info.json["tools"]` instead (see [Tools](./tools)). After every
+annotation run the pipeline ensures the canonical `say` schema is
+present in that list, preserving any tools the user pre-declared. Chat-
+template consumers read the catalog through
+`LeRobotDatasetMetadata.tools` and pass it to
+`apply_chat_template(messages, tools=meta.tools, ...)`.
+
+If you want to declare additional tools for a dataset before annotation
+runs, edit `meta/info.json["tools"]` directly — the pipeline preserves
+anything already there. Implementations of those tools live under
+`src/lerobot/tools/`; one file per tool, registered via
+`TOOL_REGISTRY`. See the [Tools](./tools) doc for the authoring guide.
 
 ## How to run it locally or on SLURM
 

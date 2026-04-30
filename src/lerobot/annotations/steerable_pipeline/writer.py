@@ -69,36 +69,11 @@ from .staging import EpisodeStaging
 logger = logging.getLogger(__name__)
 
 
-SAY_TOOL_SCHEMA: dict[str, Any] = {
-    "type": "function",
-    "function": {
-        "name": "say",
-        "description": "Speak a short utterance to the user via the TTS executor.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "The verbatim text to speak.",
-                }
-            },
-            "required": ["text"],
-        },
-    },
-}
-"""Fixed JSON schema for the only tool the canonical recipe knows about.
-
-Kept here as a code constant rather than written as a parquet column so
-the v3.1 schema (PR 1) doesn't need to grow a redundant broadcast field
-that holds the same value on every row of every dataset. Downstream
-chat-template consumers (Pi0.5 processor, lerobot-dataset-visualizer)
-import this directly. If multi-tool-set support ever becomes real, the
-right place is ``meta/info.json["tools"]`` — adding it later is
-non-breaking; ripping out a parquet column already shipped is not.
-"""
-
-DEFAULT_TOOLS: list[dict[str, Any]] = [SAY_TOOL_SCHEMA]
-"""Convenience list for ``apply_chat_template(messages, tools=...)``."""
+# Tool schema constants moved to lerobot.datasets.language in PR 1 — single
+# source of truth. Re-exported here so existing imports
+# (``from lerobot.annotations.steerable_pipeline.writer import SAY_TOOL_SCHEMA``)
+# keep working.
+from lerobot.datasets.language import DEFAULT_TOOLS, SAY_TOOL_SCHEMA  # noqa: F401, E402
 
 
 def _row_persistent_sort_key(row: dict[str, Any]) -> tuple:

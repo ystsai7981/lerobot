@@ -128,7 +128,55 @@ class Executor:
         print(f"[annotate] writing parquet shards into {root}/data/...", flush=True)
         written = self.writer.write_all(records, staging_dir, root)
         print(f"[annotate] wrote {len(written)} shard(s); pipeline complete", flush=True)
+
+        # Persist the tool catalog to meta/info.json so chat-template
+        # consumers (PR 3 SmolVLA2 / Pi0.5 / dataset visualizer) can read
+        # it via ``LeRobotDatasetMetadata.tools`` (PR 1). Idempotent and
+        # additive: anything the user pre-populated is preserved; we only
+        # ensure the canonical ``say`` schema is present.
+        self._ensure_tools_in_info(root)
+
         return PipelineRunSummary(phases=phases, written_paths=written, validation_report=report)
+
+    def _ensure_tools_in_info(self, root: Path) -> None:
+        """Write ``meta/info.json["tools"]`` if missing the canonical ``say``.
+
+        Reads any user-declared tools already in ``info.json`` and merges
+        the canonical ``SAY_TOOL_SCHEMA`` into the list (deduped by
+        ``function.name``). Writes back to disk only if the list
+        changed.
+        """
+        import json  # noqa: PLC0415
+
+        from lerobot.datasets.language import SAY_TOOL_SCHEMA  # noqa: PLC0415
+
+        info_path = root / "meta" / "info.json"
+        if not info_path.exists():
+            return
+        try:
+            info = json.loads(info_path.read_text())
+        except Exception as exc:  # noqa: BLE001
+            print(f"[annotate] could not read {info_path}: {exc}", flush=True)
+            return
+
+        existing = info.get("tools")
+        if not isinstance(existing, list):
+            existing = []
+        names = {
+            (t.get("function") or {}).get("name")
+            for t in existing
+            if isinstance(t, dict)
+        }
+        merged = list(existing)
+        if SAY_TOOL_SCHEMA["function"]["name"] not in names:
+            merged.append(SAY_TOOL_SCHEMA)
+        if merged != existing:
+            info["tools"] = merged
+            info_path.write_text(json.dumps(info, indent=2))
+            print(
+                f"[annotate] meta/info.json: tools={[t['function']['name'] for t in merged]}",
+                flush=True,
+            )
 
     def _run_module_phase(
         self,
