@@ -19,7 +19,6 @@ env/
 venv/
 env.bak/
 venv.bak/
-.python-version
 __pypackages__/
 node_modules/
 
@@ -176,3 +175,7 @@ outputs/
 *.urdf
 *.xml
 *.part
+
+# SO101 robot assets — re-include despite the broad *.stl/*.urdf/*.xml patterns above
+!assets/so101/
+!assets/so101/**
