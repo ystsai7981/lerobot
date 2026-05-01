@@ -287,6 +287,27 @@ uv run python -m lerobot.rl.actor --config_path configs/train_config_hilserl_so1
 - W&B:`wandb.enable: true` + `WANDB_API_KEY` → 看 `intervention_rate`、`episode_reward`
 - checkpoint:`outputs/train/so101_hilserl/checkpoints/`,`save_freq=10000`
 
+## A5. Inference(訓完跑訓練好的 policy)
+
+⚠️ 上游 `lerobot.rl.eval_policy` 寫壞了(`env_cfg.pretrained_policy_name_or_path` 欄位已不存在),`lerobot-eval` 主要給模擬環境用。我們提供 `scripts/eval_sac_so101.py` 套上 `gym_manipulator` 的 IK pipeline 處理 EE-delta → joint 的轉換,在實機上跑訓練好的 SAC policy:
+
+```bash
+cd ~/lerobot
+uv run python scripts/eval_sac_so101.py \
+  --config_path=configs/train_config_hilserl_so101.json \
+  --policy.path=outputs/train/so101_hilserl/checkpoints/last/pretrained_model
+```
+
+可選的環境變數:`EVAL_N_EPISODES=10`(預設 5)。
+
+腳本會:
+- 用同一份 `train_config_hilserl_so101.json` 建 robot env(reset 姿勢、IK bounds、reward classifier 等都套用)
+- Load checkpoint 進 SAC policy,`policy.eval()` 模式
+- 跑 N 個 episode → 印每集步數、reward、最終成功率
+- **不存 dataset、不更新 policy、不需 learner**(純 inference)
+
+如果 policy 表現不夠好,通常代表 RL 訓練本身沒收斂(看 W&B `episode_reward` 曲線);demo 不夠或 reward classifier 不準也會造成這結果。
+
 ---
 
 # 路線 B:HIL-DAgger SmolVLA(改善現有 BC,不走 RL)
@@ -359,19 +380,23 @@ uv run lerobot-train \
 
 第二輪起 `--policy.path` 改指 `outputs/train/so101_smolvla_dagger_iter<N-1>/checkpoints/last/pretrained_model`,`--output_dir` 每輪 +1。
 
-## B3. 純 autonomous 評估(決定是否再 iterate)
+## B3. Inference + 評估(同一個指令,既是純 inference 也是「決定是否再 iterate」)
 
 ```bash
 uv run lerobot-rollout \
   --robot.type=so101_follower --robot.port=/dev/ttyACM0 \
-  --robot.cameras='{...}' \
+  --robot.cameras='{front:{type:opencv,index_or_path:0,height:480,width:640,fps:30},wrist:{type:opencv,index_or_path:2,height:480,width:640,fps:30}}' \
   --policy.path=outputs/train/so101_smolvla_dagger_iter1/checkpoints/last/pretrained_model \
   --strategy.type=base \
-  --task="<task>" \
-  --duration=120
+  --task="pick up the cube and place it in the box" \
+  --duration=120 \
+  --device=cuda
 ```
 
-`strategy.type=base` 不錄不介入,純跑 policy。眼睛看成功率,不可接受 → 回 B1 跑 iter2。
+- `strategy.type=base` 不錄、不介入,純跑 policy(實機 inference)
+- `duration=120` 跑 120 秒,改 0 為無限(Ctrl+C 結束)
+- `--task` 帶任務描述,SmolVLA 會 tokenize 餵進 VLM(語言條件)
+- 眼睛看成功率,不可接受 → 回 B1 跑 iter2(同變體繼續累積資料);可接受 → 收工,這就是部署用的指令
 
 ### Iteration tip
 
