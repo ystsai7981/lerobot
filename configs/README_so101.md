@@ -18,14 +18,17 @@
 
 ## 範本選擇 (對應流程階段)
 
-`mode` 跟 `dataset.push_to_hub` 是切換流程的主開關:
+`configs/` 目前有 5 個範本,各對應一個流程階段:
 
-| 階段 | `mode` | `push_to_hub` | 其他要改的 |
-|---|---|---|---|
-| 錄 demonstrations | `"record"` | `true`(若要傳上 Hub) | `dataset.num_episodes_to_record`(建議 15–30) |
-| 錄 reward classifier 資料 | `"record"` | `true` | `env.processor.reset.terminate_on_success: false`(讓 episode 收滿成功 frame) |
-| 訓練(actor-learner) | `null` | `false` | `env.processor.reward_classifier.pretrained_path` 填訓練好的 reward 模型 |
-| Replay | `"replay"` | — | `dataset.replay_episode` 設要重播的 episode index |
+| 階段 | 用哪個 config | 跑什麼指令 |
+|---|---|---|
+| 錄 demonstrations(gamepad) | `env_config_so101.json` | `python -m lerobot.rl.gym_manipulator --config_path ...` |
+| 錄 demonstrations(leader+鍵盤) | `env_config_so101_leader.json` | 同上 |
+| 框 ROI + 縮圖 | (沿用 demos 的資料集) | `python -m lerobot.rl.crop_dataset_roi --repo-id local/so101_pick_lift_cube --root data/so101_pick_lift_cube` |
+| 錄 reward classifier 資料 | `env_config_so101_reward.json` | `python -m lerobot.rl.gym_manipulator --config_path ...` |
+| 訓練 reward classifier | `reward_classifier_train_config.json` | `lerobot-train --config_path ...` |
+| 訓練 actor-learner(SAC) | `train_config_hilserl_so101.json` | 兩個 terminal:`python -m lerobot.rl.learner` 與 `python -m lerobot.rl.actor` |
+| Replay episode | (隨便一個 env 配 + `mode: "replay"` + `dataset.replay_episode`) | `python -m lerobot.rl.gym_manipulator --config_path ...` |
 
 ## URDF & IK
 

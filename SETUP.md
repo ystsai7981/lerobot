@@ -128,6 +128,9 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
 - [x] placo `RobotKinematics` 已驗證可正確 load URDF,joint_names = `[shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]`,FK at zero pose 給合理 EE 位置
 - [x] **`configs/env_config_so101.json`** 寫好(新版嵌套 schema、gamepad teleop),draccus 解析通過 — 全 schema 對得上 dataclass(教程文件範例的 `type: gym_manipulator` 與 `task / fps` 在 env 層級已過期,本範本已修正)
 - [x] **`configs/env_config_so101_leader.json`** + 自製 **`so101_leader_hil`** teleop class(`src/lerobot/teleoperators/so_leader_hil/`)— 補上 upstream 沒接通的 leader+keyboard HIL-SERL 流程(leader 帶 follower、鍵盤標 success/fail/intervention)。draccus 解析、factory 實例化、action_features 全部驗證通過(待硬體實測 leader 連線與 pynput 鍵盤)
+- [x] **`configs/env_config_so101_reward.json`** — reward classifier 資料蒐集用(`terminate_on_success: false` + 獨立 `repo_id/root`)
+- [x] **`configs/reward_classifier_train_config.json`** — `lerobot-train` 訓練 reward classifier 用(`reward_model.type=reward_classifier`, ResNet10, 2 cameras × 128×128, 5000 steps);draccus 解析通過
+- [x] **`configs/train_config_hilserl_so101.json`** — actor-learner 訓練主 config(`policy.type=sac`, `num_discrete_actions=3` 給 gripper、connection on `127.0.0.1:50051`、合併整段 `env` HILSerlRobotEnvConfig);draccus 解析通過
 - [x] **`configs/README_so101.md`** 註明每個欄位該填什麼、用什麼指令量,以及 gamepad ↔ leader+keyboard 的選擇對照
 
 ## 接到 SO101 才能做的事(在公司 PC)
@@ -177,6 +180,57 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
 
    通用流程(兩種 mode 共通):
    - 預期 ≥15 個 episode,每集 5–10 秒
-   - 完成後跑 `crop_dataset_roi.py` 找 ROI,填回 `image_preprocessing.crop_params_dict`
-6. **(選)訓練 reward classifier** — 改 `mode: "record"` + `terminate_on_success: false`,再錄一份;然後 `lerobot-train` 訓練,把 path 填回 `processor.reward_classifier.pretrained_path`
-7. **訓練 actor-learner**:`mode: null`,在兩個 terminal 分別跑 `lerobot.rl.learner` 與 `lerobot.rl.actor`
+   - 完成後接 step 6 框 ROI(再進到訓練)
+
+6. **框 ROI + 縮圖**(把訓練輸入縮到只看任務區域):
+
+   ```bash
+   cd ~/lerobot
+   uv run python -m lerobot.rl.crop_dataset_roi \
+     --repo-id local/so101_pick_lift_cube \
+     --root data/so101_pick_lift_cube \
+     --task pick_and_lift
+   ```
+
+   會跳出 OpenCV 視窗,**對每個相機畫一個方框**(滑鼠拖曳)→ Enter 確認 → ESC 跳下一個。產出:
+   - 新資料集:`data/so101_pick_lift_cube_cropped_resized/`(repo_id `local/so101_pick_lift_cube_cropped_resized`)
+   - ROI 參數:`<新資料集>/meta/crop_params.json`(把這個 dict 內容貼到 `train_config_hilserl_so101.json` 的 `env.processor.image_preprocessing.crop_params_dict`,actor 在訓練時就會即時 crop 同範圍)
+
+7. **(選)訓練 reward classifier** — 自動偵測 episode 成功,可省下人手按 success。沒做的話 actor 期間每集仍要按 RB/`s` 標 success,policy 還是學得起來。
+
+   a. **錄 reward classifier 資料集**(成功+失敗各半,episode 多但短):
+   ```bash
+   cd ~/lerobot
+   uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_reward.json
+   ```
+   差別 vs `env_config_so101.json`:`terminate_on_success: false`(成功後不結束,多收成功 frame)、`repo_id/root` 改 `so101_reward_data`。建議錄 30+ episodes,各 5–10 秒。
+
+   b. **訓練 classifier**:
+   ```bash
+   uv run lerobot-train --config_path configs/reward_classifier_train_config.json
+   ```
+   產出:`outputs/train/so101_reward_classifier/checkpoints/last/pretrained_model/`
+
+   c. **接到 actor-learner**:把 `train_config_hilserl_so101.json` 的 `env.processor.reward_classifier.pretrained_path` 從 `null` 改成上面那個 path。
+
+8. **訓練 actor-learner**(SAC RL,需要兩個 terminal):
+
+   開兩個 terminal,**先 learner、後 actor**(actor 透過 gRPC 連 learner)。兩邊用同一個 config:
+
+   Terminal 1 — Learner:
+   ```bash
+   cd ~/lerobot
+   uv run python -m lerobot.rl.learner --config_path configs/train_config_hilserl_so101.json
+   ```
+
+   Terminal 2 — Actor(等 learner 印出 `Listening on 127.0.0.1:50051` 再開):
+   ```bash
+   cd ~/lerobot
+   uv run python -m lerobot.rl.actor --config_path configs/train_config_hilserl_so101.json
+   ```
+
+   訓練期間:
+   - actor 跑 policy → 蒐集 transitions → gRPC 送 learner → learner 更新 → 推回 actor
+   - 用 gamepad RB 按住做 intervention(rollout 開頭多干預幾次,中後期讓 policy 自己跑)
+   - W&B:`train_config_hilserl_so101.json` 頂層的 `wandb.enable: true` + 設定 `WANDB_API_KEY`,可看 `intervention_rate`、`episode_reward` 隨 step 下降/上升的曲線
+   - checkpoint 存在 `outputs/train/so101_hilserl/checkpoints/`,`save_freq=10000`
