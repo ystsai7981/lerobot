@@ -1,0 +1,62 @@
+{
+  "robot": {
+    "type": "so101_follower",
+    "port": "/dev/ttyACM0",
+    "use_degrees": true,
+    "disable_torque_on_disconnect": true,
+    "cameras": {
+      "front": {
+        "type": "opencv",
+        "index_or_path": 0,
+        "height": 480,
+        "width": 640,
+        "fps": 30
+      },
+      "wrist": {
+        "type": "opencv",
+        "index_or_path": 2,
+        "height": 480,
+        "width": 640,
+        "fps": 30
+      }
+    }
+  },
+  "teleop": {
+    "type": "so101_leader",
+    "port": "/dev/ttyACM1",
+    "use_degrees": true
+  },
+  "strategy": {
+    "type": "dagger",
+    "record_autonomous": true,
+    "input_device": "keyboard",
+    "keyboard": {
+      "pause_resume": "space",
+      "correction": "tab",
+      "upload": "enter"
+    },
+    "num_episodes": 15,
+    "upload_every_n_episodes": 9999
+  },
+  "inference": {
+    "type": "sync"
+  },
+  "dataset": {
+    "repo_id": "local/rollout_so101_dagger_TODO_task",
+    "root": "data/rollout_so101_dagger_TODO_task",
+    "single_task": "TODO replace with task description",
+    "num_episodes": 15,
+    "fps": 30,
+    "streaming_encoding": true,
+    "encoder_threads": 2,
+    "push_to_hub": false,
+    "video_encoding_batch_size": 1
+  },
+  "fps": 30,
+  "duration": 0,
+  "task": "TODO replace with task description",
+  "device": "cuda",
+  "return_to_initial_position": true,
+  "use_torch_compile": false,
+  "play_sounds": true
+}

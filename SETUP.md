@@ -131,6 +131,7 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
 - [x] **`configs/env_config_so101_reward.json`** — reward classifier 資料蒐集用(`terminate_on_success: false` + 獨立 `repo_id/root`)
 - [x] **`configs/reward_classifier_train_config.json`** — `lerobot-train` 訓練 reward classifier 用(`reward_model.type=reward_classifier`, ResNet10, 2 cameras × 128×128, 5000 steps);draccus 解析通過
 - [x] **`configs/train_config_hilserl_so101.json`** — actor-learner 訓練主 config(`policy.type=sac`, `num_discrete_actions=3` 給 gripper、connection on `127.0.0.1:50051`、合併整段 `env` HILSerlRobotEnvConfig);draccus 解析通過
+- [x] **`configs/rollout_dagger_so101.json`** + **`configs/train_smolvla_dagger_so101.json`** + **`scripts/add_intervention_column.py`** — HIL-DAgger 路線(替代 SAC,接續現有 BC SmolVLA);用 LeRobot 內建 `lerobot-rollout --strategy.type=dagger`,draccus 解析通過
 - [x] **`configs/README_so101.md`** 註明每個欄位該填什麼、用什麼指令量,以及 gamepad ↔ leader+keyboard 的選擇對照
 
 ## 接到 SO101 才能做的事(在公司 PC)
@@ -264,3 +265,73 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
    - 用 gamepad RB 按住做 intervention(rollout 開頭多干預幾次,中後期讓 policy 自己跑)
    - W&B:`train_config_hilserl_so101.json` 頂層的 `wandb.enable: true` + 設定 `WANDB_API_KEY`,可看 `intervention_rate`、`episode_reward` 隨 step 下降/上升的曲線
    - checkpoint 存在 `outputs/train/so101_hilserl/checkpoints/`,`save_freq=10000`
+
+10. **(替代路線)HIL-DAgger 改善現有 BC SmolVLA**(不走 RL,只用人類示範補 distribution shift):
+
+    適用場景:已經 BC 訓過 SmolVLA 但效果差(compounding errors / 失敗狀態沒見過)。LeRobot 內建 `lerobot-rollout --strategy.type=dagger`,跑 BC policy + 人在快失敗時用 leader 介入 + 自動存 intervention 旗標。
+
+    **前置**:現有 BC SmolVLA checkpoint(本機路徑或 HF Hub repo,例如 `lerobot/smolvla_base`)、原 demos dataset(可選,`scripts/add_intervention_column.py` 補欄位後可合進去訓)。
+
+    **鍵盤對映**(DAgger session 期間):
+    - `space` — pause/resume policy(AUTONOMOUS ↔ PAUSED)
+    - `tab` — start/stop correction(PAUSED ↔ CORRECTING)
+    - `enter` — push to HF Hub(本地不用)
+    - `esc` — 結束 session
+
+    ⚠️ correction 開始前**必須手動把 leader 對齊 follower 當下姿勢**(LeRobot 暫無 programmatic alignment),否則一開始介入會跳。
+
+    ### 流程(一輪 = Phase A + B + C,可重複)
+
+    **Phase A — DAgger session 收資料**(下面 4 變體擇一,user 想兩兩比較故都列):
+
+    ```bash
+    # 共用:跑 1 個 task 一次 DAgger session(15 episodes)
+    uv run lerobot-rollout \
+      --config_path configs/rollout_dagger_so101.json \
+      --policy.path=outputs/train/<bc_smolvla>/checkpoints/last/pretrained_model \
+      --dataset.repo_id=local/rollout_so101_dagger_<task> \
+      --dataset.root=data/rollout_so101_dagger_<task> \
+      --dataset.single_task="<task description>" \
+      --task="<task description>" \
+      --strategy.num_episodes=15
+    ```
+
+    | 變體 | 怎麼錄 | 怎麼合併出單一 train dataset |
+|---|---|---|
+    | **V1 從頭+分開** | 上面跑 3 次,task 分別是 pick-and-place / stack / sort | `lerobot-edit-dataset --operation.type=merge --operation.repo_ids=[3個 dagger 的 repo_id]` |
+    | **V2 從頭+混錄** | 跑 1 次,`--strategy.num_episodes=45`,口頭記每集做啥 | 錄完用 `lerobot-edit-dataset --operation.type=modify_tasks --operation.episode_tasks='{"0":"pick...","1":"stack...",...}'` 改 task 字串 |
+    | **V3 合併+分開** | 先 `python scripts/add_intervention_column.py --repo-id=local/<舊demos> --root=data/<舊demos>` 補欄位,然後同 V1 | merge 把 demos+with_intervention 跟 3 個 dagger 一起包 |
+    | **V4 合併+混錄** | V3 補欄位 + V2 跑混錄 | merge demos+with_intervention 跟 V2 dagger dataset |
+
+    ⚠️ **舊 demos schema 要跟 DAgger 對得起來**:`lerobot-rollout` 預設 action 是 6 維 joint angles,但你之前如果用 `gym_manipulator` 錄的是 4 維 EE-delta(xyz+gripper),merge 會 schema mismatch。先 `lerobot-edit-dataset --operation.type=info --repo_id=local/<舊demos>` 看 features,不一樣就只能走 V1/V2(從頭 DAgger)。
+
+    **Phase B — 重訓 SmolVLA**(從上一輪 checkpoint 接著 fine-tune):
+
+    ```bash
+    uv run lerobot-train \
+      --config_path configs/train_smolvla_dagger_so101.json \
+      --policy.path=lerobot/smolvla_base \
+      --dataset.repo_id=local/<phase A 產出> \
+      --dataset.root=data/<phase A 產出> \
+      --output_dir=outputs/train/so101_smolvla_dagger_iter1
+    ```
+    - 第二輪起 `--policy.path` 改指 `outputs/train/so101_smolvla_dagger_iter<N-1>/checkpoints/last/pretrained_model`
+    - `--output_dir` 每輪改 iter 編號,免得相互覆蓋
+
+    **Phase C — 純 autonomous 評估**(看是否還要再下一輪):
+
+    ```bash
+    uv run lerobot-rollout \
+      --robot.type=so101_follower --robot.port=/dev/ttyACM0 \
+      --robot.cameras='{...}' \
+      --policy.path=outputs/train/so101_smolvla_dagger_iter1/checkpoints/last/pretrained_model \
+      --strategy.type=base \
+      --task="<task>" \
+      --duration=120
+    ```
+    - `strategy.type=base` 不錄不介入,純跑 policy,用眼睛看成功率
+    - 不可接受 → 回 Phase A 跑 iter2(同變體繼續累積資料)
+
+    ### Iteration tip
+
+    每輪 W&B 開起來看 `intervention_rate`(intervention frame 比例):理想曲線是 iter1 ~50% → iter2 ~25% → iter3 ~10%。卡住不降代表 BC 已經達到上限,該考慮 residual RL 或補相機 / 改 task 切分。

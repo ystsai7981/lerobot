@@ -1,0 +1,56 @@
+{
+  "dataset": {
+    "repo_id": "local/rollout_so101_dagger_TODO_variant_iter1",
+    "root": "data/rollout_so101_dagger_TODO_variant_iter1"
+  },
+  "policy": {
+    "type": "smolvla",
+    "device": "cuda",
+    "vlm_model_name": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+    "load_vlm_weights": true,
+    "freeze_vision_encoder": true,
+    "train_expert_only": true,
+    "train_state_proj": true,
+    "chunk_size": 50,
+    "n_action_steps": 50,
+    "max_state_dim": 32,
+    "max_action_dim": 32,
+    "tokenizer_max_length": 48,
+    "num_steps": 10,
+    "input_features": {
+      "observation.images.front": {
+        "type": "VISUAL",
+        "shape": [3, 480, 640]
+      },
+      "observation.images.wrist": {
+        "type": "VISUAL",
+        "shape": [3, 480, 640]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [6]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [6]
+      }
+    }
+  },
+  "output_dir": "outputs/train/so101_smolvla_dagger_iter1",
+  "job_name": "so101-smolvla-dagger",
+  "seed": 1000,
+  "num_workers": 4,
+  "batch_size": 64,
+  "steps": 30000,
+  "save_freq": 5000,
+  "log_freq": 100,
+  "save_checkpoint": true,
+  "use_policy_training_preset": true,
+  "wandb": {
+    "enable": false,
+    "project": "so101-smolvla-dagger",
+    "disable_artifact": false
+  }
+}
