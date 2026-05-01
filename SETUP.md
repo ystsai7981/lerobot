@@ -162,7 +162,37 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
    - 把 `Max ee position` / `Min ee position` 三個浮點數填回 `configs/env_config_so101.json` 的 `inverse_kinematics.end_effector_bounds.max` / `.min`
    - **小盒子比大盒子好**(訓練快很多);包足任務區域後留 1–2 cm 餘裕、`z` 下界 ≥ 桌面 + 1 cm 防撞桌
    - 範例對比:目前佔位符是 `±1.0 m` 立方體(完全沒約束),教程 SO100 範例是 `~8 × 28 × 7 cm` 小盒,差超過 100 倍,請務必縮到任務範圍
-5. **錄 demonstrations**:選一種 teleop 開跑
+
+5. **找 reset 姿勢**(每集 episode 從哪個姿勢開始):
+
+   ```bash
+   uv run lerobot-teleoperate \
+     --robot.type=so101_follower \
+     --robot.port=/dev/ttyACM0 \
+     --robot.id=follower \
+     --robot.use_degrees=true \
+     --teleop.type=so101_leader \
+     --teleop.port=/dev/ttyACM1 \
+     --teleop.id=leader \
+     --teleop.use_degrees=true \
+     --display_data=true
+   ```
+
+   - 用 leader **把 follower 帶到「每集應該從哪開始」的姿勢**(例如 EE 懸在工作區正中央上方 ~10 cm,gripper 微開)
+   - 終端機會即時印 6 個關節度數(NORM 欄位):
+     ```
+     NAME           | NORM
+     shoulder_pan   |   0.00
+     shoulder_lift  |   0.00
+     elbow_flex     |   0.00
+     wrist_flex     |  90.00
+     wrist_roll     |   0.00
+     gripper        |   5.00
+     ```
+   - 把這 6 個值**按上面順序**填回所有 4 個 config 的 `env.processor.reset.fixed_reset_joint_positions`(`env_config_so101.json` / `_leader.json` / `_reward.json` / `train_config_hilserl_so101.json`),Ctrl+C 退出
+   - 條件:這個姿勢必須**落在 step 4 找出的 end_effector_bounds 之內**(否則 reset 完馬上被 IK 拉回 bounds 邊界,動作會抖)
+
+6. **錄 demonstrations**:選一種 teleop 開跑
 
    **A. Gamepad mode**(預設,穩定):
    ```bash
@@ -180,9 +210,9 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
 
    通用流程(兩種 mode 共通):
    - 預期 ≥15 個 episode,每集 5–10 秒
-   - 完成後接 step 6 框 ROI(再進到訓練)
+   - 完成後接 step 7 框 ROI(再進到訓練)
 
-6. **框 ROI + 縮圖**(把訓練輸入縮到只看任務區域):
+7. **框 ROI + 縮圖**(把訓練輸入縮到只看任務區域):
 
    ```bash
    cd ~/lerobot
@@ -196,7 +226,7 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
    - 新資料集:`data/so101_pick_lift_cube_cropped_resized/`(repo_id `local/so101_pick_lift_cube_cropped_resized`)
    - ROI 參數:`<新資料集>/meta/crop_params.json`(把這個 dict 內容貼到 `train_config_hilserl_so101.json` 的 `env.processor.image_preprocessing.crop_params_dict`,actor 在訓練時就會即時 crop 同範圍)
 
-7. **(選)訓練 reward classifier** — 自動偵測 episode 成功,可省下人手按 success。沒做的話 actor 期間每集仍要按 RB/`s` 標 success,policy 還是學得起來。
+8. **(選)訓練 reward classifier** — 自動偵測 episode 成功,可省下人手按 success。沒做的話 actor 期間每集仍要按 RB/`s` 標 success,policy 還是學得起來。
 
    a. **錄 reward classifier 資料集**(成功+失敗各半,episode 多但短):
    ```bash
@@ -213,7 +243,7 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
 
    c. **接到 actor-learner**:把 `train_config_hilserl_so101.json` 的 `env.processor.reward_classifier.pretrained_path` 從 `null` 改成上面那個 path。
 
-8. **訓練 actor-learner**(SAC RL,需要兩個 terminal):
+9. **訓練 actor-learner**(SAC RL,需要兩個 terminal):
 
    開兩個 terminal,**先 learner、後 actor**(actor 透過 gRPC 連 learner)。兩邊用同一個 config:
 
