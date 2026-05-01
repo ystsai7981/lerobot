@@ -190,148 +190,189 @@ uv run python -m lerobot.rl.gym_manipulator --config_path <你的 env_config.jso
      wrist_roll     |   0.00
      gripper        |   5.00
      ```
-   - 把這 6 個值**按上面順序**填回所有 4 個 config 的 `env.processor.reset.fixed_reset_joint_positions`(`env_config_so101.json` / `_leader.json` / `_reward.json` / `train_config_hilserl_so101.json`),Ctrl+C 退出
+   - 把這 6 個值**按上面順序**填回 SAC 路線 4 個 config 的 `env.processor.reset.fixed_reset_joint_positions`(`env_config_so101.json` / `_leader.json` / `_reward.json` / `train_config_hilserl_so101.json`),Ctrl+C 退出
+   - DAgger 路線不用填 reset 姿勢(`lerobot-rollout` 沒有 reset 機制,每集從上次結束位置開始,user 手擺)
    - 條件:這個姿勢必須**落在 step 4 找出的 end_effector_bounds 之內**(否則 reset 完馬上被 IK 拉回 bounds 邊界,動作會抖)
 
-6. **錄 demonstrations**:選一種 teleop 開跑
+---
 
-   **A. Gamepad mode**(預設,穩定):
-   ```bash
-   cd ~/lerobot
-   uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101.json
-   ```
-   按鈕對映:Y/△ = success(reward=1)、A/× = failure(reward=0)、X/□ = rerecord、RB(按住)= intervention、LT/RT-area = gripper open/close
+## 兩條訓練路線(從 step 6 起分流,擇一或兩條都試)
 
-   **B. Leader + Keyboard mode**(需要 leader 手臂):
-   ```bash
-   cd ~/lerobot
-   uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_leader.json
-   ```
-   鍵盤對映:`s` = success、`esc` = failure、`r` = rerecord、`space` = toggle intervention。動作來自 leader(透過 FK 轉成 EE-delta)。注意 `end_effector_step_sizes` 在 teleop 區段跟 `processor.inverse_kinematics` 區段必須相同,否則人控 scale 會跟 policy 對不起來。詳見 `configs/README_so101.md`。
-
-   通用流程(兩種 mode 共通):
-   - 預期 ≥15 個 episode,每集 5–10 秒
-   - 完成後接 step 7 框 ROI(再進到訓練)
-
-7. **框 ROI + 縮圖**(把訓練輸入縮到只看任務區域):
-
-   ```bash
-   cd ~/lerobot
-   uv run python -m lerobot.rl.crop_dataset_roi \
-     --repo-id local/so101_pick_lift_cube \
-     --root data/so101_pick_lift_cube \
-     --task pick_and_lift
-   ```
-
-   會跳出 OpenCV 視窗,**對每個相機畫一個方框**(滑鼠拖曳)→ Enter 確認 → ESC 跳下一個。產出:
-   - 新資料集:`data/so101_pick_lift_cube_cropped_resized/`(repo_id `local/so101_pick_lift_cube_cropped_resized`)
-   - ROI 參數:`<新資料集>/meta/crop_params.json`(把這個 dict 內容貼到 `train_config_hilserl_so101.json` 的 `env.processor.image_preprocessing.crop_params_dict`,actor 在訓練時就會即時 crop 同範圍)
-
-8. **(選)訓練 reward classifier** — 自動偵測 episode 成功,可省下人手按 success。沒做的話 actor 期間每集仍要按 RB/`s` 標 success,policy 還是學得起來。
-
-   a. **錄 reward classifier 資料集**(成功+失敗各半,episode 多但短):
-   ```bash
-   cd ~/lerobot
-   uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_reward.json
-   ```
-   差別 vs `env_config_so101.json`:`terminate_on_success: false`(成功後不結束,多收成功 frame)、`repo_id/root` 改 `so101_reward_data`。建議錄 30+ episodes,各 5–10 秒。
-
-   b. **訓練 classifier**:
-   ```bash
-   uv run lerobot-train --config_path configs/reward_classifier_train_config.json
-   ```
-   產出:`outputs/train/so101_reward_classifier/checkpoints/last/pretrained_model/`
-
-   c. **接到 actor-learner**:把 `train_config_hilserl_so101.json` 的 `env.processor.reward_classifier.pretrained_path` 從 `null` 改成上面那個 path。
-
-9. **訓練 actor-learner**(SAC RL,需要兩個 terminal):
-
-   開兩個 terminal,**先 learner、後 actor**(actor 透過 gRPC 連 learner)。兩邊用同一個 config:
-
-   Terminal 1 — Learner:
-   ```bash
-   cd ~/lerobot
-   uv run python -m lerobot.rl.learner --config_path configs/train_config_hilserl_so101.json
-   ```
-
-   Terminal 2 — Actor(等 learner 印出 `Listening on 127.0.0.1:50051` 再開):
-   ```bash
-   cd ~/lerobot
-   uv run python -m lerobot.rl.actor --config_path configs/train_config_hilserl_so101.json
-   ```
-
-   訓練期間:
-   - actor 跑 policy → 蒐集 transitions → gRPC 送 learner → learner 更新 → 推回 actor
-   - 用 gamepad RB 按住做 intervention(rollout 開頭多干預幾次,中後期讓 policy 自己跑)
-   - W&B:`train_config_hilserl_so101.json` 頂層的 `wandb.enable: true` + 設定 `WANDB_API_KEY`,可看 `intervention_rate`、`episode_reward` 隨 step 下降/上升的曲線
-   - checkpoint 存在 `outputs/train/so101_hilserl/checkpoints/`,`save_freq=10000`
-
-10. **(替代路線)HIL-DAgger 改善現有 BC SmolVLA**(不走 RL,只用人類示範補 distribution shift):
-
-    適用場景:已經 BC 訓過 SmolVLA 但效果差(compounding errors / 失敗狀態沒見過)。LeRobot 內建 `lerobot-rollout --strategy.type=dagger`,跑 BC policy + 人在快失敗時用 leader 介入 + 自動存 intervention 旗標。
-
-    **前置**:現有 BC SmolVLA checkpoint(本機路徑或 HF Hub repo,例如 `lerobot/smolvla_base`)、原 demos dataset(可選,`scripts/add_intervention_column.py` 補欄位後可合進去訓)。
-
-    **鍵盤對映**(DAgger session 期間):
-    - `space` — pause/resume policy(AUTONOMOUS ↔ PAUSED)
-    - `tab` — start/stop correction(PAUSED ↔ CORRECTING)
-    - `enter` — push to HF Hub(本地不用)
-    - `esc` — 結束 session
-
-    ⚠️ correction 開始前**必須手動把 leader 對齊 follower 當下姿勢**(LeRobot 暫無 programmatic alignment),否則一開始介入會跳。
-
-    ### 流程(一輪 = Phase A + B + C,可重複)
-
-    **Phase A — DAgger session 收資料**(下面 4 變體擇一,user 想兩兩比較故都列):
-
-    ```bash
-    # 共用:跑 1 個 task 一次 DAgger session(15 episodes)
-    uv run lerobot-rollout \
-      --config_path configs/rollout_dagger_so101.json \
-      --policy.path=outputs/train/<bc_smolvla>/checkpoints/last/pretrained_model \
-      --dataset.repo_id=local/rollout_so101_dagger_<task> \
-      --dataset.root=data/rollout_so101_dagger_<task> \
-      --dataset.single_task="<task description>" \
-      --task="<task description>" \
-      --strategy.num_episodes=15
-    ```
-
-    | 變體 | 怎麼錄 | 怎麼合併出單一 train dataset |
+| | **路線 A:HIL-SERL SAC**(從零強化學習) | **路線 B:HIL-DAgger SmolVLA**(改善現有 BC) |
 |---|---|---|
-    | **V1 從頭+分開** | 上面跑 3 次,task 分別是 pick-and-place / stack / sort | `lerobot-edit-dataset --operation.type=merge --operation.repo_ids=[3個 dagger 的 repo_id]` |
-    | **V2 從頭+混錄** | 跑 1 次,`--strategy.num_episodes=45`,口頭記每集做啥 | 錄完用 `lerobot-edit-dataset --operation.type=modify_tasks --operation.episode_tasks='{"0":"pick...","1":"stack...",...}'` 改 task 字串 |
-    | **V3 合併+分開** | 先 `python scripts/add_intervention_column.py --repo-id=local/<舊demos> --root=data/<舊demos>` 補欄位,然後同 V1 | merge 把 demos+with_intervention 跟 3 個 dagger 一起包 |
-    | **V4 合併+混錄** | V3 補欄位 + V2 跑混錄 | merge demos+with_intervention 跟 V2 dagger dataset |
+| 適用 | 沒有預訓 policy、想用 reward 學 | 已有 BC SmolVLA、效果不夠好 |
+| Action 維度 | 4(EE-delta xyz + gripper,IK 自動轉) | 6(joint angles,直接送 follower) |
+| 錄 demo 工具 | `lerobot.rl.gym_manipulator` | `lerobot-record` 或 `lerobot-rollout --strategy=dagger` |
+| ROI 裁圖 | 必須(SAC ResNet10 看 128×128) | 不用(SmolVLA 內部 resize 480×640) |
+| Reward classifier | 可選 | 不用 |
+| 訓練命令 | `lerobot.rl.learner` + `lerobot.rl.actor`(兩 terminal) | `lerobot-train`(單 process) |
+| 模型大小 | 小(~10 MB,從零) | 大(~500 MB,從預訓 SmolVLA fine-tune) |
+| 語言條件 | 無 | 有(每集帶 task 字串) |
+| Configs | `env_config_so101*.json` / `*hilserl*.json` / `reward_classifier*.json` | `rollout_dagger_so101.json` / `train_smolvla_dagger_so101.json` |
 
-    ⚠️ **舊 demos schema 要跟 DAgger 對得起來**:`lerobot-rollout` 預設 action 是 6 維 joint angles,但你之前如果用 `gym_manipulator` 錄的是 4 維 EE-delta(xyz+gripper),merge 會 schema mismatch。先 `lerobot-edit-dataset --operation.type=info --repo_id=local/<舊demos>` 看 features,不一樣就只能走 V1/V2(從頭 DAgger)。
+---
 
-    **Phase B — 重訓 SmolVLA**(從上一輪 checkpoint 接著 fine-tune):
+# 路線 A:HIL-SERL SAC(從零強化學習)
 
-    ```bash
-    uv run lerobot-train \
-      --config_path configs/train_smolvla_dagger_so101.json \
-      --policy.path=lerobot/smolvla_base \
-      --dataset.repo_id=local/<phase A 產出> \
-      --dataset.root=data/<phase A 產出> \
-      --output_dir=outputs/train/so101_smolvla_dagger_iter1
-    ```
-    - 第二輪起 `--policy.path` 改指 `outputs/train/so101_smolvla_dagger_iter<N-1>/checkpoints/last/pretrained_model`
-    - `--output_dir` 每輪改 iter 編號,免得相互覆蓋
+> 從這裡起的步驟用 A1, A2, … 編號(跟 step 1-5 接續但屬於 SAC 路線)
 
-    **Phase C — 純 autonomous 評估**(看是否還要再下一輪):
+## A1. 錄 demonstrations(`gym_manipulator`,4 維 EE-delta action)
 
-    ```bash
-    uv run lerobot-rollout \
-      --robot.type=so101_follower --robot.port=/dev/ttyACM0 \
-      --robot.cameras='{...}' \
-      --policy.path=outputs/train/so101_smolvla_dagger_iter1/checkpoints/last/pretrained_model \
-      --strategy.type=base \
-      --task="<task>" \
-      --duration=120
-    ```
-    - `strategy.type=base` 不錄不介入,純跑 policy,用眼睛看成功率
-    - 不可接受 → 回 Phase A 跑 iter2(同變體繼續累積資料)
+選一種 teleop:
 
-    ### Iteration tip
+**A1a. Gamepad mode**(預設,穩定):
+```bash
+cd ~/lerobot
+uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101.json
+```
+按鈕對映:Y/△ = success、A/× = failure、X/□ = rerecord、RB(按住)= intervention、LT/RT = gripper open/close
 
-    每輪 W&B 開起來看 `intervention_rate`(intervention frame 比例):理想曲線是 iter1 ~50% → iter2 ~25% → iter3 ~10%。卡住不降代表 BC 已經達到上限,該考慮 residual RL 或補相機 / 改 task 切分。
+**A1b. Leader + Keyboard mode**(需要 leader 手臂):
+```bash
+cd ~/lerobot
+uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_leader.json
+```
+鍵盤對映:`s` = success、`esc` = failure、`r` = rerecord、`space` = toggle intervention。動作來自 leader(透過 FK 轉成 EE-delta)。注意 `end_effector_step_sizes` 在 teleop 區段跟 `processor.inverse_kinematics` 區段必須相同,否則人控 scale 會跟 policy 對不起來。
+
+通用:預期 ≥15 個 episode、每集 5–10 秒。
+
+## A2. 框 ROI + 縮圖(SAC 必須)
+
+```bash
+uv run python -m lerobot.rl.crop_dataset_roi \
+  --repo-id local/so101_pick_lift_cube \
+  --root data/so101_pick_lift_cube \
+  --task pick_and_lift
+```
+
+OpenCV 視窗對每個相機畫框 → Enter 確認 → ESC 跳下一個。產出:
+- 新資料集 `data/so101_pick_lift_cube_cropped_resized/`
+- `<新資料集>/meta/crop_params.json`(把內容貼到 `train_config_hilserl_so101.json` 的 `env.processor.image_preprocessing.crop_params_dict`)
+
+## A3.(選)訓練 reward classifier
+
+自動偵測 episode 成功,省下人手按 success。沒做的話 actor 期間每集仍要按 RB/`s` 標 success,policy 還是學得起來。
+
+a. **錄 reward classifier 資料集**(`terminate_on_success: false`,成功+失敗各半):
+```bash
+uv run python -m lerobot.rl.gym_manipulator --config_path configs/env_config_so101_reward.json
+```
+建議 30+ episodes,各 5–10 秒。
+
+b. **訓練**:
+```bash
+uv run lerobot-train --config_path configs/reward_classifier_train_config.json
+```
+產出 `outputs/train/so101_reward_classifier/checkpoints/last/pretrained_model/`。
+
+c. **接回去**:把 `train_config_hilserl_so101.json` 的 `env.processor.reward_classifier.pretrained_path` 從 `null` 改成上面那個 path。
+
+## A4. 訓練 actor-learner(SAC,需要兩個 terminal)
+
+Terminal 1 — Learner:
+```bash
+cd ~/lerobot
+uv run python -m lerobot.rl.learner --config_path configs/train_config_hilserl_so101.json
+```
+
+Terminal 2 — Actor(等 learner 印 `Listening on 127.0.0.1:50051` 再開):
+```bash
+cd ~/lerobot
+uv run python -m lerobot.rl.actor --config_path configs/train_config_hilserl_so101.json
+```
+
+訓練期間:
+- actor 跑 policy → 蒐 transitions → gRPC 送 learner → 更新 → 推回 actor
+- gamepad RB 按住做 intervention(開頭多干預,後期讓 policy 自己跑)
+- W&B:`wandb.enable: true` + `WANDB_API_KEY` → 看 `intervention_rate`、`episode_reward`
+- checkpoint:`outputs/train/so101_hilserl/checkpoints/`,`save_freq=10000`
+
+---
+
+# 路線 B:HIL-DAgger SmolVLA(改善現有 BC,不走 RL)
+
+> 從這裡起用 B1, B2, … 編號。**前置條件**:已有 BC SmolVLA checkpoint(可以是 `lerobot/smolvla_base` 微調過的、或本地 `outputs/train/<old_run>/checkpoints/last/pretrained_model`)
+
+## B0.(若無 BC SmolVLA)先用 `lerobot-record` 收 demos + BC 訓一輪
+
+```bash
+# 錄 demos(joint action,跟 DAgger schema 一致;rollout_ 前綴 DAgger 才需要,demos 就用 demo_ 前綴)
+uv run lerobot-record \
+  --robot.type=so101_follower --robot.port=/dev/ttyACM0 \
+  --robot.cameras='{front:{type:opencv,index_or_path:0,height:480,width:640,fps:30},wrist:{type:opencv,index_or_path:2,height:480,width:640,fps:30}}' \
+  --teleop.type=so101_leader --teleop.port=/dev/ttyACM1 \
+  --dataset.repo_id=local/demo_so101_pp \
+  --dataset.root=data/demo_so101_pp \
+  --dataset.single_task="pick up the cube and place it in the box" \
+  --dataset.num_episodes=20
+
+# BC 訓 SmolVLA(從 lerobot/smolvla_base fine-tune)
+uv run lerobot-train \
+  --config_path configs/train_smolvla_dagger_so101.json \
+  --policy.path=lerobot/smolvla_base \
+  --dataset.repo_id=local/demo_so101_pp \
+  --dataset.root=data/demo_so101_pp \
+  --output_dir=outputs/train/so101_smolvla_bc_iter0
+```
+
+## B1. DAgger session 收資料(4 種變體擇一,user 想比較故都列)
+
+⚠️ **鍵盤對映**(DAgger session 期間):
+- `space` = pause/resume policy(AUTONOMOUS ↔ PAUSED)
+- `tab` = start/stop correction(PAUSED ↔ CORRECTING)
+- `enter` = push to HF Hub(本地用不到)
+- `esc` = 結束
+
+⚠️ correction 開始前**必須手動把 leader 對齊 follower 當下姿勢**(LeRobot 暫無 programmatic alignment),否則一介入會跳。
+
+**共用單 task 命令**:
+```bash
+uv run lerobot-rollout \
+  --config_path configs/rollout_dagger_so101.json \
+  --policy.path=outputs/train/so101_smolvla_bc_iter0/checkpoints/last/pretrained_model \
+  --dataset.repo_id=local/rollout_so101_dagger_<task> \
+  --dataset.root=data/rollout_so101_dagger_<task> \
+  --dataset.single_task="<task description>" \
+  --task="<task description>" \
+  --strategy.num_episodes=15
+```
+
+| 變體 | 怎麼錄 | 合併出單一 train dataset |
+|---|---|---|
+| **V1 從頭+分開** | 上面跑 3 次,task 分別 pick-and-place / stack / sort | `lerobot-edit-dataset --operation.type=merge --operation.repo_ids=[3個 dagger]` |
+| **V2 從頭+混錄** | 跑 1 次,`--strategy.num_episodes=45`,口頭記每集做啥 | `lerobot-edit-dataset --operation.type=modify_tasks --operation.episode_tasks='{"0":"pick...","1":"stack...",...}'` |
+| **V3 合併+分開** | 先 `python scripts/add_intervention_column.py --repo-id=local/<舊demos> --root=data/<舊demos>` 補欄位,然後同 V1 | merge demos+with_intervention 跟 3 個 dagger |
+| **V4 合併+混錄** | V3 補欄位 + V2 跑混錄 | merge demos+with_intervention 跟 V2 dagger |
+
+⚠️ **舊 demos schema 必須跟 DAgger 對得起來**:`lerobot-rollout` action = 6 維 joint angles,`gym_manipulator` action = 4 維 EE-delta + gripper,**兩者不能直接 merge**。先 `lerobot-edit-dataset --operation.type=info --repo_id=local/<舊demos>` 看 features,如果不是 6 維 joint 就只能走 V1/V2(從頭 DAgger,丟掉 SAC 路線錄的舊 demos)。
+
+## B2. 重訓 SmolVLA(從上一輪 checkpoint fine-tune)
+
+```bash
+uv run lerobot-train \
+  --config_path configs/train_smolvla_dagger_so101.json \
+  --policy.path=outputs/train/so101_smolvla_bc_iter0/checkpoints/last/pretrained_model \
+  --dataset.repo_id=local/<B1 產出 merged dataset> \
+  --dataset.root=data/<B1 產出> \
+  --output_dir=outputs/train/so101_smolvla_dagger_iter1
+```
+
+第二輪起 `--policy.path` 改指 `outputs/train/so101_smolvla_dagger_iter<N-1>/checkpoints/last/pretrained_model`,`--output_dir` 每輪 +1。
+
+## B3. 純 autonomous 評估(決定是否再 iterate)
+
+```bash
+uv run lerobot-rollout \
+  --robot.type=so101_follower --robot.port=/dev/ttyACM0 \
+  --robot.cameras='{...}' \
+  --policy.path=outputs/train/so101_smolvla_dagger_iter1/checkpoints/last/pretrained_model \
+  --strategy.type=base \
+  --task="<task>" \
+  --duration=120
+```
+
+`strategy.type=base` 不錄不介入,純跑 policy。眼睛看成功率,不可接受 → 回 B1 跑 iter2。
+
+### Iteration tip
+
+W&B 看 `intervention_rate`(intervention frame 比例):iter1 ~50% → iter2 ~25% → iter3 ~10% 是理想曲線。卡住不降代表 BC 已達上限,該考慮 residual RL 或補相機 / 改 task 切分。
